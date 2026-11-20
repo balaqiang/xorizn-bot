@@ -1,0 +1,24 @@
+{
+  "groups": {
+    "120363430670551011@g.us": {
+      "kudeta": {
+        "on": false,
+        "mode": "demote",
+        "strict": false,
+        "trust": []
+      },
+      "fake": {
+        "on": false,
+        "allow": [
+          "62"
+        ]
+      },
+      "auto": {
+        "open": null,
+        "close": null,
+        "lastOpen": "",
+        "lastClose": ""
+      }
+    }
+  }
+}

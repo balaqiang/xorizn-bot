@@ -1,0 +1,60 @@
+{
+  "bot": {
+    "name": "Bitch Bot",
+    "ownerName": "Owner",
+    "owners": [],
+    "loginMethod": "pairing",
+    "pairingNumber": "",
+    "sessionDir": "data/session",
+    "timezone": "Asia/Jakarta"
+  },
+  "database": {
+    "driver": "json",
+    "json": { "file": "data/database.json" },
+    "sqlite": { "file": "data/database.sqlite" },
+    "mysql": {
+      "host": "127.0.0.1",
+      "port": 3306,
+      "user": "root",
+      "password": "",
+      "database": "bitch_bot"
+    }
+  },
+  "dashboard": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 3000,
+    "password": ""
+  },
+  "packs": {
+    "rubby": true,
+    "vanxone": true
+  },
+  "apiKeys": {
+    "kyzz": "",
+    "neoxr": "",
+    "siputzx": "",
+    "azbry": "",
+    "cuki": "",
+    "firefly": "",
+    "obscura": "",
+    "groq": "",
+    "vercel": "",
+    "shoppanel": ""
+  },
+  "integrations": {
+    "githubToken": "",
+    "githubUser": "",
+    "telegramToken": "",
+    "ai": {
+      "provider": "openai",
+      "url": "https://api.openai.com/v1/chat/completions",
+      "apiKey": "",
+      "model": "gpt-4o-mini"
+    },
+    "autoorder": {
+      "apiKey": "",
+      "baseUrl": "https://auto-order.alxzyy.my.id/api/v2"
+    }
+  }
+}

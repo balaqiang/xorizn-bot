@@ -1,0 +1,13 @@
+module.exports = {
+  name: 'reloadfitur',
+  command: ['reloadfitur', 'reload', 'muatulang'],
+  category: 'owner',
+  desc: 'Muat ulang semua plugin dari disk (setelah mengedit file manual)',
+  owner: true,
+  run: async ({ reloadPlugins, plugins, reply }) => {
+    const r = reloadPlugins()
+    await reply(
+      [`🔄 *${r.loaded} plugin dimuat*`, r.failed.length ? `\n⚠️ ${r.failed.length} gagal:\n${r.failed.slice(0, 8).map((f) => `• ${f.file}: ${String(f.error).slice(0, 80)}`).join('\n')}` : '✅ Tidak ada kegagalan.'].join('\n')
+    )
+  }
+}

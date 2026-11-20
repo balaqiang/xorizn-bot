@@ -1,0 +1,7 @@
+const { dayRand } = require('../../lib/fx')
+const W = [['Serendipitas', 'Keberuntungan menemukan hal berharga secara tak sengaja'], ['Nirwana', 'Keadaan bahagia yang sempurna'], ['Senandika', 'Percakapan dengan diri sendiri'], ['Rekah', 'Terbuka atau mekar'], ['Gegas', 'Cepat; terburu-buru'], ['Kala', 'Waktu; masa'], ['Sukma', 'Jiwa; roh'], ['Merdeka', 'Bebas dari penjajahan atau kekangan'], ['Anugerah', 'Pemberian dari yang Mahakuasa'], ['Tabah', 'Tetap kuat menghadapi cobaan'], ['Pelita', 'Lampu kecil; penerang'], ['Sanubari', 'Hati nurani; batin'], ['Elok', 'Indah; cantik'], ['Gigih', 'Tekun dan keras hati'], ['Lestari', 'Tetap tidak berubah; kekal']]
+const Q = ['"Mulailah dari mana kau berdiri, gunakan yang kau miliki, lakukan yang kau bisa." — Arthur Ashe', '"Kegagalan hanyalah kesempatan untuk memulai lagi dengan lebih cerdas." — Henry Ford', '"Orang yang berhenti belajar adalah orang yang sudah tua." — Henry Ford', '"Jangan menunggu. Waktu takkan pernah tepat." — Napoleon Hill', '"Hidup itu 10% apa yang terjadi padamu dan 90% bagaimana kamu meresponsnya." — Charles Swindoll', '"Satu-satunya cara melakukan pekerjaan hebat adalah mencintai pekerjaanmu." — Steve Jobs']
+module.exports = {
+  name: 'kataharian', command: ['kataharian', 'katabaru', 'quotehariini'], category: 'fun', emoji: '📖', desc: 'Kata indah hari ini + kutipan harian', usage: '',
+  run: async ({ reply }) => { const [w, d] = W[dayRand('kata', 0, W.length - 1)]; await reply(`📖 *KATA HARI INI*\n\n✨ *${w}*\n_${d}_\n\n💬 *Kutipan harian*\n${Q[dayRand('quote', 0, Q.length - 1)]}`) }
+}

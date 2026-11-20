@@ -1,0 +1,20 @@
+# dependensi
+node_modules/
+.npm-cache/
+
+# data runtime: sesi login WhatsApp, database JSON/SQLite, cache, cadangan
+data/
+*.log
+
+# konfigurasi lokal (berisi password dashboard & API key) — salin dari config/config.example.json
+config/config.json
+
+# berkas sensitif / sementara dari pack
+packs/vanxone/bin/cookies.txt
+packs/vanxone/database/plugin-backup/
+packs/vanxone/database/runtime-settings.json
+packs/*/tmp/*
+!packs/*/tmp/.gitkeep
+
+# hasil graphify (dibangun ulang dengan `npm run graph`)
+graphify-out/

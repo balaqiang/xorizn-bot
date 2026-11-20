@@ -1,0 +1,6 @@
+{
+  "name": "pack-rubby",
+  "private": true,
+  "type": "module",
+  "description": "Pack fitur Rubby-MD v1.5 (ESM). Dijalankan oleh src/compat/rubby.js — jangan dijalankan langsung."
+}

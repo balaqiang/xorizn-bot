@@ -1,0 +1,21 @@
+# Folder yang tidak perlu masuk graph kode
+node_modules/
+data/
+graphify-out/
+config/config.json
+packs/vanxone/database/
+packs/vanxone/bin/
+packs/vanxone/media/
+packs/vanxone/assets/
+packs/rubby/media/
+packs/rubby/tmp/
+**/*.json
+**/*.png
+**/*.jpg
+**/*.webp
+**/*.mp3
+**/*.mp4
+**/*.ttf
+
+# file legacy raksasa (1,4 MB) yang membuat ekstraksi AST sangat lambat
+packs/vanxone/engine/zenith/src/lib/rimuru-import/Rimuru-legacy-engine.js

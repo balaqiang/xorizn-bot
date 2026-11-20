@@ -1,0 +1,43 @@
+// Port dari 'plugin baru' (swm.js) — logika & teks output sama dengan plugin asal; dijalankan lewat lib/sahril.js.
+const S = require('../../lib/engine/core')
+const fs = require('fs')
+
+const handler = async (m, { sock, text, reply, example }) => {
+
+  if (!text)
+    return reply(example(`wm nya dengan reply sticker`))
+
+  if (!m.quoted)
+    return reply(example(`wm nya dengan reply sticker`))
+
+  const qmsg = m.quoted
+  const mime = (qmsg.msg || qmsg).mimetype || ""
+  const packname = "by"
+  const author = text.trim()
+
+  if (!/webp/.test(mime))
+    return reply("⚠️ Reply ke sticker aja bang, bukan foto/video.")
+
+  await reply("Wait...")
+
+  try {
+    const media = await sock.downloadAndSaveMediaMessage(qmsg)
+
+    await sock.sendImageAsSticker(
+      m.chat,
+      media,
+      m,
+      { packname, author }
+    )
+
+    fs.unlinkSync(media)
+  } catch (err) {
+    console.error("❌ Error .swm:", err)
+    reply("❌ Gagal mengubah watermark sticker.")
+  }
+}
+
+handler.command = ["swm"]
+handler.limit = true
+
+module.exports = S.wrap(handler, {"category": "sticker"})

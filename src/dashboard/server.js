@@ -1,0 +1,568 @@
+/**
+ * Dashboard localhost: REST API + Server-Sent Events + SPA statis (src/dashboard/public).
+ */
+import path from 'node:path'
+import os from 'node:os'
+import crypto from 'node:crypto'
+import { fileURLToPath } from 'node:url'
+import express from 'express'
+import bot from '../core/bot.js'
+import logger from '../logger.js'
+import { saveConfigPatch } from '../config.js'
+import { DEFAULT_GROUP, getGroup, getUser, isPremium } from '../core/models.js'
+import { DRIVERS, createDriver } from '../database/index.js'
+import { requestPairing, logout as waLogout, restartSocket, refreshGroups } from '../core/connection.js'
+import { sendGreeting } from '../features/greetings.js'
+import { renderCard, engine as cardEngine } from '../features/welcome-card.js'
+import { participantPn, userPart, digits, toPnJid } from '../core/jid.js'
+import { restart } from '../core/lifecycle.js'
+import { loadNativePlugins } from '../core/loader.js'
+
+const log = logger.child('dashboard')
+const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public')
+/** Sesi login dashboard disimpan di database supaya tetap login setelah restart. */
+const sessions = {
+  col: () => bot.db.collection('_dashboard_sessions'),
+  get(sid) {
+    return this.col()[sid]
+  },
+  set(sid, v) {
+    const col = this.col()
+    for (const [k, s] of Object.entries(col)) if (s.exp < Date.now()) delete col[k]
+    col[sid] = v
+    bot.db.save()
+  },
+  delete(sid) {
+    if (sid && this.col()[sid]) {
+      delete this.col()[sid]
+      bot.db.save()
+    }
+  }
+}
+const loginAttempts = new Map()
+const SESSION_TTL = 7 * 86_400_000
+const recentCommands = []
+const pictureCache = new Map()
+
+bot.on('command', (c) => {
+  recentCommands.push(c)
+  if (recentCommands.length > 50) recentCommands.shift()
+})
+
+// ---------- helpers ----------
+const pick = (obj, keys) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => keys.includes(k)))
+const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
+
+function parseCookies(header = '') {
+  return Object.fromEntries(header.split(';').map((c) => c.trim().split('=')).filter(([k]) => k).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))]))
+}
+
+function requireAuth(req, res, next) {
+  const sid = parseCookies(req.headers.cookie).sid
+  const s = sid && sessions.get(sid)
+  if (!s || s.exp < Date.now()) {
+    if (sid) sessions.delete(sid)
+    return res.status(401).json({ error: 'Belum login' })
+  }
+  if (s.exp - Date.now() < SESSION_TTL - 3_600_000) {
+    s.exp = Date.now() + SESSION_TTL
+    bot.db.save()
+  }
+  next()
+}
+
+function requireConnected(req, res, next) {
+  if (!bot.isConnected) return res.status(409).json({ error: 'Bot belum terhubung ke WhatsApp' })
+  next()
+}
+
+function maskKey(v) {
+  if (!v) return ''
+  const s = String(v)
+  return s.length <= 6 ? '••••' : `${s.slice(0, 3)}••••${s.slice(-3)}`
+}
+
+function dailySeries(days = 14) {
+  const daily = bot.db.get('stats', 'daily') || {}
+  const out = []
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10)
+    out.push({ date: d, messages: daily[d] || 0, commands: daily[`${d}:cmd`] || 0 })
+  }
+  return out
+}
+
+function groupSummary(meta, doc) {
+  const me = [bot.sock?.user?.id, bot.sock?.user?.lid].filter(Boolean).map(userPart)
+  const botP = (meta?.participants || []).find((p) => [p.id, p.lid, p.phoneNumber].filter(Boolean).map(userPart).some((u) => me.includes(u)))
+  return {
+    id: meta?.id || doc?.id,
+    subject: meta?.subject || doc?.name || '(tanpa nama)',
+    size: meta?.participants?.length ?? meta?.size ?? 0,
+    announce: !!meta?.announce,
+    restrict: !!meta?.restrict,
+    creation: meta?.creation || 0,
+    botAdmin: !!botP?.admin,
+    settings: pick(doc, ['botEnabled', 'welcome', 'goodbye', 'antilink', 'antiBadword', 'nsfw', 'onlyAdmin', 'stats'])
+  }
+}
+
+function commandRows() {
+  const usage = bot.db.get('stats', 'commands') || {}
+  const disabled = new Set(bot.settings.disabledCommands || [])
+  const rows = []
+  for (const e of bot.registry.entries.values()) {
+    const active = bot.registry.resolve(e.name)
+    const providers = bot.registry.providers(e.name).map((p) => p.source)
+    rows.push({
+      id: e.id,
+      name: e.name,
+      aliases: e.aliases.filter((a) => a !== e.name),
+      category: e.category,
+      source: e.source,
+      description: e.description,
+      usage: e.usage,
+      flags: e.flags,
+      file: e.file,
+      active: active?.id === e.id,
+      providers,
+      disabled: e.aliases.some((a) => disabled.has(a)),
+      uses: usage[e.name] || 0
+    })
+  }
+  return rows.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+const SETTINGS_KEYS = [
+  'botName', 'ownerName', 'owners', 'prefixes', 'noPrefix', 'mode', 'autoRead', 'autoTyping', 'alwaysOnline', 'antiCall',
+  'antiCallMessage', 'cooldown', 'packname', 'author', 'footer', 'thumbnail', 'timezone', 'welcomeText', 'goodbyeText',
+  'welcomeBackground', 'welcomeColor', 'goodbyeColor', 'providerOrder', 'autoResponses', 'commandProviders', 'disabledCommands'
+]
+const GROUP_KEYS = Object.keys(DEFAULT_GROUP).filter((k) => !['stats', 'joinedAt', 'name'].includes(k))
+
+// ---------- app ----------
+export async function startDashboard() {
+  const { host, port, password } = bot.config.dashboard
+  const app = express()
+  app.disable('x-powered-by')
+  app.use(express.json({ limit: '2mb' }))
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('X-Frame-Options', 'DENY')
+    res.setHeader('Referrer-Policy', 'no-referrer')
+    next()
+  })
+
+  // ----- auth -----
+  app.get('/api/session', (req, res) => {
+    const sid = parseCookies(req.headers.cookie).sid
+    res.json({ authenticated: !!(sid && sessions.get(sid)?.exp > Date.now()), botName: bot.settings.botName })
+  })
+  app.post('/api/login', (req, res) => {
+    const ip = req.socket.remoteAddress
+    const tries = (loginAttempts.get(ip) || []).filter((t) => Date.now() - t < 10 * 60_000)
+    if (tries.length >= 10) return res.status(429).json({ error: 'Terlalu banyak percobaan. Tunggu 10 menit.' })
+    const a = Buffer.from(String(req.body?.password || ''))
+    const b = Buffer.from(String(password))
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      tries.push(Date.now())
+      loginAttempts.set(ip, tries)
+      return res.status(401).json({ error: 'Password salah' })
+    }
+    loginAttempts.delete(ip)
+    const sid = crypto.randomBytes(24).toString('hex')
+    sessions.set(sid, { exp: Date.now() + SESSION_TTL })
+    res.setHeader('Set-Cookie', `sid=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000}`)
+    res.json({ ok: true })
+  })
+  app.post('/api/logout', (req, res) => {
+    sessions.delete(parseCookies(req.headers.cookie).sid)
+    res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+    res.json({ ok: true })
+  })
+
+  app.use('/api', requireAuth)
+
+  // ----- overview -----
+  app.get('/api/overview', (req, res) => {
+    const usage = bot.db.get('stats', 'commands') || {}
+    const top = Object.entries(usage).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }))
+    const users = bot.db.collection('users')
+    const groups = bot.db.collection('groups')
+    const mem = process.memoryUsage()
+    res.json({
+      status: bot.status,
+      settings: { botName: bot.settings.botName, mode: bot.settings.mode, prefixes: bot.settings.prefixes, owners: bot.settings.owners },
+      uptime: Date.now() - bot.startedAt,
+      runtime: bot.runtime,
+      counts: {
+        groups: bot.isConnected ? bot.groupCache.list().length : Object.keys(groups).length,
+        users: Object.keys(users).length,
+        premium: Object.values(users).filter((u) => u.premium).length,
+        banned: Object.values(users).filter((u) => u.banned).length,
+        commands: bot.registry.active().length,
+        sources: bot.registry.counts(),
+        conflicts: bot.registry.conflicts().length
+      },
+      daily: dailySeries(14),
+      top,
+      recent: recentCommands.slice(-15).reverse(),
+      system: {
+        node: process.version,
+        platform: `${os.platform()} ${os.arch()}`,
+        cpu: os.cpus()?.[0]?.model || '',
+        rss: mem.rss,
+        heap: mem.heapUsed,
+        totalmem: os.totalmem(),
+        freemem: os.freemem(),
+        load: os.loadavg()
+      },
+      database: bot.db.stats(),
+      dbError: bot.dbError || null,
+      cardEngine: cardEngine()
+    })
+  })
+
+  // ----- realtime -----
+  app.get('/api/events', (req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+    const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)
+    send('status', bot.status)
+    const onStatus = (s) => send('status', s)
+    const onLog = (e) => send('log', e)
+    const onCmd = (c) => send('command', c)
+    const onGroups = () => send('groups', {})
+    bot.on('status', onStatus)
+    logger.on('entry', onLog)
+    bot.on('command', onCmd)
+    bot.on('groups', onGroups)
+    const ping = setInterval(() => res.write(': ping\n\n'), 25_000)
+    req.on('close', () => {
+      clearInterval(ping)
+      bot.off('status', onStatus)
+      logger.off('entry', onLog)
+      bot.off('command', onCmd)
+      bot.off('groups', onGroups)
+    })
+  })
+  app.get('/api/logs', (req, res) => res.json(logger.recent(Number(req.query.limit) || 300, req.query.level || undefined)))
+
+  // ----- connection -----
+  app.post('/api/connection/pair', asyncRoute(async (req, res) => {
+    const code = await requestPairing(req.body?.number)
+    res.json({ code })
+  }))
+  app.post('/api/connection/logout', asyncRoute(async (req, res) => {
+    await waLogout()
+    res.json({ ok: true })
+  }))
+  app.post('/api/connection/reconnect', asyncRoute(async (req, res) => {
+    await restartSocket()
+    res.json({ ok: true })
+  }))
+  app.post('/api/system/restart', (req, res) => {
+    res.json({ ok: true, launcher: !!process.env.BOT_LAUNCHER })
+    setTimeout(() => restart(), 300)
+  })
+
+  // ----- groups -----
+  app.get('/api/groups', asyncRoute(async (req, res) => {
+    const docs = bot.db.collection('groups')
+    let metas = []
+    if (bot.isConnected) metas = await bot.groupCache.all(bot.sock, req.query.refresh === '1').catch(() => bot.groupCache.list())
+    const list = metas.length ? metas.map((meta) => groupSummary(meta, getGroup(meta.id))) : Object.entries(docs).map(([id, d]) => groupSummary({ id, subject: d.name }, d))
+    res.json({ connected: bot.isConnected, groups: list.sort((a, b) => b.size - a.size) })
+  }))
+  app.get('/api/groups/:id', asyncRoute(async (req, res) => {
+    const id = req.params.id
+    if (!id.endsWith('@g.us')) return res.status(400).json({ error: 'id grup tidak valid' })
+    let meta = null
+    if (bot.isConnected) meta = await bot.groupCache.get(bot.sock, id, req.query.refresh === '1').catch(() => null)
+    const doc = getGroup(id)
+    const participants = (meta?.participants || []).map((p) => {
+      const jid = participantPn(p)
+      const u = bot.db.get('users', jid)
+      return { id: p.id, jid, number: userPart(jid), name: u?.name || '', admin: p.admin || null, warns: doc.warns[userPart(jid)] || 0 }
+    })
+    res.json({
+      summary: groupSummary(meta || { id, subject: doc.name }, doc),
+      meta: meta ? { desc: meta.desc || '', owner: meta.ownerPn || meta.owner || '', creation: meta.creation, announce: meta.announce, restrict: meta.restrict, joinApprovalMode: meta.joinApprovalMode, memberAddMode: meta.memberAddMode, ephemeralDuration: meta.ephemeralDuration } : null,
+      participants,
+      settings: doc,
+      defaults: { welcomeText: bot.settings.welcomeText, goodbyeText: bot.settings.goodbyeText }
+    })
+  }))
+  app.get('/api/groups/:id/picture', asyncRoute(async (req, res) => {
+    const id = req.params.id
+    const hit = pictureCache.get(id)
+    let url = hit && Date.now() - hit.at < 3_600_000 ? hit.url : undefined
+    if (url === undefined && bot.isConnected) {
+      url = await bot.sock.profilePictureUrl(id, 'image').catch(() => null)
+      pictureCache.set(id, { url, at: Date.now() })
+    }
+    if (!url) return res.status(404).end()
+    res.redirect(url)
+  }))
+  app.patch('/api/groups/:id/settings', (req, res) => {
+    const doc = getGroup(req.params.id)
+    const patch = pick(req.body, GROUP_KEYS)
+    if (patch.antilink && !['off', 'wa', 'all'].includes(patch.antilink)) return res.status(400).json({ error: 'antilink harus off/wa/all' })
+    if (patch.antilinkAction && !['delete', 'warn', 'kick'].includes(patch.antilinkAction)) return res.status(400).json({ error: 'aksi tidak valid' })
+    if (patch.warnLimit !== undefined) patch.warnLimit = Math.min(20, Math.max(1, Number(patch.warnLimit) || 3))
+    if (patch.badwords) patch.badwords = [...new Set([].concat(patch.badwords).map((w) => String(w).toLowerCase().trim()).filter(Boolean))]
+    Object.assign(doc, patch)
+    bot.db.save()
+    res.json({ ok: true, settings: doc })
+  })
+  app.post('/api/groups/:id/preview/:kind', asyncRoute(async (req, res) => {
+    const kind = req.params.kind === 'goodbye' ? 'goodbye' : 'welcome'
+    const doc = getGroup(req.params.id)
+    const meta = bot.isConnected ? await bot.groupCache.get(bot.sock, req.params.id).catch(() => null) : null
+    const me = bot.sock?.user
+    const png = await renderCard(kind, {
+      username: me?.name || bot.settings.botName,
+      number: userPart(me?.id || '0000'),
+      groupName: meta?.subject || doc.name || 'Nama Grup',
+      memberCount: meta?.participants?.length || 0,
+      avatar: me?.id && bot.isConnected ? await bot.sock.profilePictureUrl(me.id, 'image').catch(() => null) : null,
+      background: req.body?.background ?? (doc.cardBackground || bot.settings.welcomeBackground),
+      color: kind === 'welcome' ? bot.settings.welcomeColor : bot.settings.goodbyeColor
+    })
+    res.type('png').send(png)
+  }))
+  app.post('/api/preview/:kind', asyncRoute(async (req, res) => {
+    const kind = req.params.kind === 'goodbye' ? 'goodbye' : 'welcome'
+    const png = await renderCard(kind, {
+      username: req.body?.username || 'Member Baru',
+      number: '6281200001234',
+      groupName: req.body?.groupName || 'Grup Contoh',
+      memberCount: 128,
+      background: req.body?.background ?? bot.settings.welcomeBackground,
+      color: req.body?.color || (kind === 'welcome' ? bot.settings.welcomeColor : bot.settings.goodbyeColor)
+    })
+    res.type('png').send(png)
+  }))
+  app.post('/api/groups/:id/test/:kind', requireConnected, asyncRoute(async (req, res) => {
+    const me = bot.sock.user
+    await sendGreeting(bot.sock, req.params.id, req.params.kind === 'goodbye' ? 'goodbye' : 'welcome', { id: me.lid || me.id, phoneNumber: me.id })
+    res.json({ ok: true })
+  }))
+  app.post('/api/groups/:id/message', requireConnected, asyncRoute(async (req, res) => {
+    const text = String(req.body?.text || '').trim()
+    if (!text) return res.status(400).json({ error: 'Pesan kosong' })
+    const meta = await bot.groupCache.get(bot.sock, req.params.id).catch(() => null)
+    const mentions = req.body?.hidetag ? (meta?.participants || []).map((p) => p.id) : []
+    await bot.sock.sendMessage(req.params.id, { text, mentions })
+    res.json({ ok: true })
+  }))
+  app.post('/api/groups/:id/action', requireConnected, asyncRoute(async (req, res) => {
+    const { action, participant } = req.body || {}
+    const id = req.params.id
+    switch (action) {
+      case 'open':
+        await bot.sock.groupSettingUpdate(id, 'not_announcement')
+        break
+      case 'close':
+        await bot.sock.groupSettingUpdate(id, 'announcement')
+        break
+      case 'leave':
+        await bot.sock.groupLeave(id)
+        bot.groupCache.delete(id)
+        break
+      case 'refresh':
+        await bot.groupCache.get(bot.sock, id, true)
+        break
+      case 'invite':
+        return res.json({ ok: true, link: `https://chat.whatsapp.com/${await bot.sock.groupInviteCode(id)}` })
+      case 'promote':
+      case 'demote':
+      case 'remove':
+        if (!participant) return res.status(400).json({ error: 'participant wajib' })
+        await bot.sock.groupParticipantsUpdate(id, [participant], action)
+        await bot.groupCache.get(bot.sock, id, true).catch(() => {})
+        break
+      default:
+        return res.status(400).json({ error: 'aksi tidak dikenal' })
+    }
+    bot.emit('groups')
+    res.json({ ok: true })
+  }))
+  app.post('/api/groups/join', requireConnected, asyncRoute(async (req, res) => {
+    const code = String(req.body?.link || '').match(/chat\.whatsapp\.com\/([A-Za-z0-9]{10,})/)?.[1] || String(req.body?.link || '').trim()
+    if (!code) return res.status(400).json({ error: 'Link tidak valid' })
+    const id = await bot.sock.groupAcceptInvite(code)
+    await refreshGroups(true).catch(() => {})
+    res.json({ ok: true, id })
+  }))
+
+  // ----- bot settings -----
+  app.get('/api/settings', (req, res) => res.json({ settings: bot.settings, cardEngine: cardEngine() }))
+  app.patch('/api/settings', (req, res) => {
+    const patch = pick(req.body, SETTINGS_KEYS)
+    if (patch.owners) patch.owners = [...new Set([].concat(patch.owners).map(digits).filter(Boolean))]
+    if (patch.prefixes) patch.prefixes = [...new Set([].concat(patch.prefixes).map((p) => String(p).trim()).filter(Boolean))].slice(0, 10)
+    if (patch.prefixes && !patch.prefixes.length) return res.status(400).json({ error: 'Minimal satu prefix' })
+    if (patch.mode && !['public', 'self', 'group', 'private'].includes(patch.mode)) return res.status(400).json({ error: 'mode tidak valid' })
+    if (patch.cooldown !== undefined) patch.cooldown = Math.min(60, Math.max(0, Number(patch.cooldown) || 0))
+    bot.saveSettings(patch)
+    res.json({ ok: true, settings: bot.settings })
+  })
+
+  // ----- commands -----
+  app.get('/api/commands', (req, res) => {
+    res.json({ commands: commandRows(), counts: bot.registry.counts(), providerOrder: bot.settings.providerOrder })
+  })
+  app.patch('/api/commands/:name', (req, res) => {
+    const name = req.params.name.toLowerCase()
+    const entry = bot.registry.resolve(name)
+    if (!entry) return res.status(404).json({ error: 'Perintah tidak ditemukan' })
+    if (typeof req.body?.disabled === 'boolean') {
+      const set = new Set(bot.settings.disabledCommands)
+      for (const a of entry.aliases) set.delete(a)
+      if (req.body.disabled) set.add(name)
+      bot.saveSettings({ disabledCommands: [...set] })
+    }
+    if (req.body?.provider) {
+      const providers = bot.registry.providers(name).map((p) => p.source)
+      if (!providers.includes(req.body.provider)) return res.status(400).json({ error: 'Sumber tidak tersedia' })
+      bot.saveSettings({ commandProviders: { ...bot.settings.commandProviders, [name]: req.body.provider } })
+    }
+    res.json({ ok: true })
+  })
+  app.post('/api/commands/reload', asyncRoute(async (req, res) => {
+    const native = await loadNativePlugins(bot.config.paths.plugins)
+    bot.registry.register('native', native.entries)
+    bot.nativeHooks = native.hooks
+    for (const pack of Object.values(bot.packs)) await pack.reload?.()
+    res.json({ ok: true, total: bot.registry.active().length })
+  }))
+
+  // ----- users -----
+  app.get('/api/users', (req, res) => {
+    const q = String(req.query.q || '').toLowerCase()
+    const filter = String(req.query.filter || '')
+    const owners = new Set(bot.settings.owners)
+    let list = Object.entries(bot.db.collection('users')).map(([id, u]) => ({
+      id,
+      number: userPart(id),
+      name: u.name,
+      premium: isPremium(id),
+      premiumTime: u.premiumTime,
+      banned: u.banned,
+      banReason: u.banReason,
+      owner: owners.has(userPart(id)),
+      commands: u.commands || 0,
+      limit: u.limit,
+      lastSeen: u.lastSeen,
+      firstSeen: u.firstSeen
+    }))
+    if (q) list = list.filter((u) => u.number.includes(q) || String(u.name).toLowerCase().includes(q))
+    if (filter === 'premium') list = list.filter((u) => u.premium)
+    if (filter === 'banned') list = list.filter((u) => u.banned)
+    if (filter === 'owner') list = list.filter((u) => u.owner)
+    list.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))
+    const page = Math.max(1, Number(req.query.page) || 1)
+    const size = 50
+    res.json({ total: list.length, page, pages: Math.max(1, Math.ceil(list.length / size)), users: list.slice((page - 1) * size, page * size) })
+  })
+  app.patch('/api/users/:id', (req, res) => {
+    const jid = toPnJid(req.params.id)
+    if (!jid) return res.status(400).json({ error: 'id tidak valid' })
+    const u = getUser(jid)
+    const b = req.body || {}
+    if (typeof b.premium === 'boolean') {
+      u.premium = b.premium
+      u.premiumTime = b.premium && b.days ? Date.now() + Number(b.days) * 86_400_000 : 0
+    }
+    if (typeof b.banned === 'boolean') {
+      u.banned = b.banned
+      u.banReason = b.banned ? String(b.banReason || '') : ''
+    }
+    if (b.limit !== undefined) u.limit = Math.max(0, Number(b.limit) || 0)
+    if (typeof b.owner === 'boolean') {
+      const set = new Set(bot.settings.owners)
+      b.owner ? set.add(userPart(jid)) : set.delete(userPart(jid))
+      bot.saveSettings({ owners: [...set] })
+    }
+    bot.db.save()
+    res.json({ ok: true })
+  })
+
+  // ----- system config -----
+  app.get('/api/config', (req, res) => {
+    const c = bot.config
+    res.json({
+      database: { driver: c.database.driver, active: bot.db.driverName, json: c.database.json, sqlite: c.database.sqlite, mysql: { ...c.database.mysql, password: c.database.mysql.password ? '••••••' : '' } },
+      dashboard: { host: c.dashboard.host, port: c.dashboard.port },
+      bot: { loginMethod: c.bot.loginMethod, pairingNumber: c.bot.pairingNumber, sessionDir: c.bot.sessionDir },
+      packs: c.packs,
+      apiKeys: Object.fromEntries(Object.entries(c.apiKeys || {}).map(([k, v]) => [k, maskKey(v)])),
+      drivers: DRIVERS,
+      launcher: !!process.env.BOT_LAUNCHER
+    })
+  })
+  app.patch('/api/config', (req, res) => {
+    const b = req.body || {}
+    const patch = {}
+    if (b.dashboard) {
+      patch.dashboard = pick(b.dashboard, ['host', 'port', 'password'])
+      if (patch.dashboard.password !== undefined && String(patch.dashboard.password).length < 6) return res.status(400).json({ error: 'Password minimal 6 karakter' })
+      if (patch.dashboard.port) patch.dashboard.port = Number(patch.dashboard.port)
+    }
+    if (b.bot) patch.bot = pick(b.bot, ['loginMethod', 'pairingNumber'])
+    if (b.packs) patch.packs = pick(b.packs, ['rubby', 'vanxone'])
+    if (b.apiKeys) patch.apiKeys = Object.fromEntries(Object.entries(b.apiKeys).filter(([, v]) => typeof v === 'string' && !v.includes('••')))
+    saveConfigPatch(patch)
+    res.json({ ok: true, restartRequired: true })
+  })
+  const dbOptions = (driver, body) => {
+    const base = bot.config.database[driver] || {}
+    const opts = { ...base, ...(body || {}) }
+    if (driver === 'mysql' && (!opts.password || String(opts.password).includes('••'))) opts.password = base.password
+    return opts
+  }
+  app.post('/api/database/test', asyncRoute(async (req, res) => {
+    const { driver, options } = req.body || {}
+    if (!DRIVERS.includes(driver)) return res.status(400).json({ error: 'driver tidak valid' })
+    const d = await createDriver(driver, dbOptions(driver, options), bot.config.paths.root)
+    try {
+      await d.connect()
+      const rows = await d.load()
+      res.json({ ok: true, rows: rows.length, info: d.describe?.() })
+    } finally {
+      await d.close?.()
+    }
+  }))
+  app.post('/api/database/migrate', asyncRoute(async (req, res) => {
+    const { driver, options } = req.body || {}
+    if (!DRIVERS.includes(driver)) return res.status(400).json({ error: 'driver tidak valid' })
+    const opts = dbOptions(driver, options)
+    await bot.db.flush()
+    const target = await createDriver(driver, opts, bot.config.paths.root)
+    const rows = await bot.db.exportTo(target)
+    saveConfigPatch({ database: { driver, [driver]: opts } })
+    log.success(`data (${rows} baris) disalin ke ${driver}. Restart untuk memakai driver baru.`)
+    res.json({ ok: true, rows, restartRequired: true })
+  }))
+
+  // ----- static SPA -----
+  app.use(express.static(PUBLIC, { index: 'index.html', maxAge: 0 }))
+  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(PUBLIC, 'index.html')))
+
+  app.use((err, req, res, next) => {
+    log.error(`${req.method} ${req.path}:`, err.message)
+    if (res.headersSent) return next(err)
+    res.status(500).json({ error: err.message || 'Kesalahan server' })
+  })
+
+  await new Promise((resolve, reject) => {
+    const server = app.listen(port, host, resolve)
+    server.on('error', reject)
+  }).catch((err) => {
+    log.error(`dashboard gagal jalan di ${host}:${port}: ${err.message}`)
+    throw err
+  })
+  log.success(`dashboard: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`)
+  if (host !== '127.0.0.1' && host !== 'localhost') log.warn('Dashboard bisa diakses dari jaringan lain. Pastikan password kuat.')
+  return app
+}

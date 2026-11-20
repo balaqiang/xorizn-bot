@@ -1,0 +1,21 @@
+module.exports = async function (__naren_imp, __naren_meta) {
+
+
+let handler = async (m) => {
+	let hash;
+	if (m.quoted && m.quoted.fileSha256) hash = m.quoted.fileSha256;
+	if (!hash) throw `Tidak ada hash`;
+	let sticker = global.db.data.sticker;
+	if (sticker[hash] && sticker[hash].locked) throw 'Kamu tidak memiliki izin untuk menghapus perintah stiker ini';
+	delete sticker[hash];
+	m.reply(`Berhasil!`);
+};
+
+handler.help = ['delcmd'];
+handler.tags = ['database'];
+handler.command = ['delcmd'];
+
+const __naren_default = handler;;
+
+;return { default: __naren_default };
+}

@@ -1,0 +1,31 @@
+module.exports = async function (__naren_imp, __naren_meta) {
+
+
+let handler = async (m, { conn }) => {
+	conn.reply(
+		m.chat,
+		`
+*DAFTAR CMD*
+\`\`\`
+${Object.entries(global.db.data.sticker)
+	.map(([key, value], index) => `${index + 1}. ${value.locked ? `(Terkunci) ${key}` : key} : ${value.text}`)
+	.join('\n')}
+\`\`\`
+`.trim(),
+		null,
+		{
+			mentions: Object.values(global.db.data.sticker)
+				.map((x) => x.mentionedJid)
+				.reduce((a, b) => [...a, ...b], []),
+		}
+	);
+};
+
+handler.help = ['listcmd'];
+handler.tags = ['database'];
+handler.command = ['listcmd'];
+
+const __naren_default = handler;;
+
+;return { default: __naren_default };
+}
