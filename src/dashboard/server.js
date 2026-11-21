@@ -8,11 +8,11 @@ import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import bot from '../core/bot.js'
-import logger from '../logger.js'
-import { saveConfigPatch } from '../config.js'
+import logger from '../core/logger.js'
+import { saveConfigPatch } from '../core/config.js'
 import { DEFAULT_GROUP, getGroup, getUser, isPremium } from '../core/models.js'
-import { DRIVERS, createDriver } from '../database/index.js'
-import { requestPairing, logout as waLogout, restartSocket, refreshGroups } from '../core/connection.js'
+import { DRIVERS, createDriver } from '../core/database/index.js'
+import { requestPairing, logout as waLogout, restartSocket, refreshGroups, resolveChannel } from '../core/connection.js'
 import { sendGreeting } from '../features/greetings.js'
 import { renderCard, engine as cardEngine } from '../features/welcome-card.js'
 import { participantPn, userPart, digits, toPnJid } from '../core/jid.js'
@@ -138,7 +138,8 @@ function commandRows() {
 const SETTINGS_KEYS = [
   'botName', 'ownerName', 'owners', 'prefixes', 'noPrefix', 'mode', 'autoRead', 'autoTyping', 'alwaysOnline', 'antiCall',
   'antiCallMessage', 'cooldown', 'packname', 'author', 'footer', 'thumbnail', 'timezone', 'welcomeText', 'goodbyeText',
-  'welcomeBackground', 'welcomeColor', 'goodbyeColor', 'providerOrder', 'autoResponses', 'commandProviders', 'disabledCommands'
+  'welcomeBackground', 'welcomeColor', 'goodbyeColor', 'providerOrder', 'autoResponses', 'commandProviders', 'disabledCommands',
+  'website', 'channel'
 ]
 const GROUP_KEYS = Object.keys(DEFAULT_GROUP).filter((k) => !['stats', 'joinedAt', 'name'].includes(k))
 
@@ -410,7 +411,16 @@ export async function startDashboard() {
     if (patch.prefixes && !patch.prefixes.length) return res.status(400).json({ error: 'Minimal satu prefix' })
     if (patch.mode && !['public', 'self', 'group', 'private'].includes(patch.mode)) return res.status(400).json({ error: 'mode tidak valid' })
     if (patch.cooldown !== undefined) patch.cooldown = Math.min(60, Math.max(0, Number(patch.cooldown) || 0))
+    if (patch.channel !== undefined) {
+      const cur = bot.settings.channel || {}
+      const url = String(patch.channel?.url ?? cur.url ?? '').trim()
+      if (url && !/^https:\/\/(www\.)?whatsapp\.com\/channel\/[A-Za-z0-9]+\/?$/.test(url)) return res.status(400).json({ error: 'Link channel harus berbentuk https://whatsapp.com/channel/...' })
+      const name = String(patch.channel?.name ?? cur.name ?? '').slice(0, 80)
+      // link berubah → JID lama tidak berlaku, diambil ulang saat bot tersambung
+      patch.channel = url === cur.url ? { ...cur, name } : { url, name, jid: '' }
+    }
     bot.saveSettings(patch)
+    if (patch.channel && !patch.channel.jid && bot.sock && bot.status?.connection === 'open') resolveChannel(bot.sock).catch(() => {})
     const { opencode: _oc, ...settings } = bot.settings
     res.json({ ok: true, settings })
   })
@@ -517,7 +527,7 @@ export async function startDashboard() {
       if (patch.dashboard.port) patch.dashboard.port = Number(patch.dashboard.port)
     }
     if (b.bot) patch.bot = pick(b.bot, ['loginMethod', 'pairingNumber'])
-    if (b.packs) patch.packs = pick(b.packs, ['rubby', 'vanxone'])
+    if (b.packs) patch.packs = pick(b.packs, ['extra', 'classic'])
     if (b.apiKeys) patch.apiKeys = Object.fromEntries(Object.entries(b.apiKeys).filter(([, v]) => typeof v === 'string' && !v.includes('••')))
     saveConfigPatch(patch)
     res.json({ ok: true, restartRequired: true })
@@ -592,7 +602,7 @@ export async function startDashboard() {
       defaultModel: defaultModel ? `${defaultModel.providerID}/${defaultModel.id}` : null,
       models: models.filter((m) => !m.type || m.type === 'chat').map((m) => ({ key: `${m.providerID}/${m.id}`, providerID: m.providerID, id: m.id, name: m.name, input: m.capabilities?.input || [], variants: (m.variants || []).map((v) => v.id), enabled: m.enabled !== false, context: m.limit?.context })),
       agents: agents.filter((a) => a.mode !== 'subagent' && !a.hidden).map((a) => ({ id: a.id, description: a.description || a.name })),
-      sessions: sessions.map((s) => ({ id: s.id, title: s.title, updated: s.time?.updated, model: s.model ? `${s.model.providerID}/${s.model.id}${s.model.variant && s.model.variant !== 'default' ? `#${s.model.variant}` : ''}` : '', fromBot: s.metadata?.source === 'bitch-bot', user: s.metadata?.user || '', cost: s.cost, tokens: s.tokens }))
+      sessions: sessions.map((s) => ({ id: s.id, title: s.title, updated: s.time?.updated, model: s.model ? `${s.model.providerID}/${s.model.id}${s.model.variant && s.model.variant !== 'default' ? `#${s.model.variant}` : ''}` : '', fromBot: s.metadata?.source === 'xorizn-bot', user: s.metadata?.user || '', cost: s.cost, tokens: s.tokens }))
     })
   }))
   app.patch('/api/opencode/config', (req, res) => {
@@ -666,6 +676,14 @@ export async function startDashboard() {
       res.status(503).type('html').send('<h2 style="font-family:sans-serif">Dashboard belum di-build</h2><p style="font-family:sans-serif">Jalankan <code>npm run build:dashboard</code> lalu muat ulang halaman ini.</p>')
     )
   } else {
+    // Next 16 (output: 'export') menyimpan prefetch segmen sebagai folder
+    // (settings/__next.!KGFkbWluKQ/settings/__PAGE__.txt), sedangkan browser memintanya dengan titik
+    // (settings/__next.!KGFkbWluKQ.settings.__PAGE__.txt). Tanpa ini tiap navigasi 404 → muat ulang penuh.
+    app.use((req, res, next) => {
+      const m = /^(.*\/)__next\.(.+)\.txt$/.exec(req.path)
+      if (m && m[2].includes('.')) req.url = `${m[1]}__next.${m[2].split('.').join('/')}.txt`
+      next()
+    })
     app.use('/_next', express.static(path.join(PUBLIC, '_next'), { maxAge: '365d', immutable: true }))
     app.use(express.static(PUBLIC, { index: 'index.html', maxAge: 0, extensions: ['html'] }))
     app.get(/^\/(?!api\/).*/, (req, res) => res.status(404).sendFile(path.join(PUBLIC, '404.html')))

@@ -3,11 +3,11 @@ node_modules/
 data/
 graphify-out/
 config/config.json
-database/
-bin/
-media/
-assets/
-tmp/
+src/database/
+src/bin/
+src/media/
+src/assets/
+src/tmp/
 docs/
 **/*.json
 **/*.png
@@ -18,6 +18,6 @@ docs/
 **/*.ttf
 
 # file legacy raksasa (1,4 MB) yang membuat ekstraksi AST sangat lambat
-engine/zenith/src/lib/rimuru-import/Rimuru-legacy-engine.js
+src/engine/zenith/src/lib/zenith-import/xorizn-bot-legacy-engine.js
 dashboard/out/
 dashboard/.next/

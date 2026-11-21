@@ -12,7 +12,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import bot from '../core/bot.js'
-import logger from '../logger.js'
+import logger from '../core/logger.js'
 import { userPart } from '../core/jid.js'
 
 const log = logger.child('opencode')
@@ -202,7 +202,7 @@ export async function newSession(ctx, title) {
     agent: state.agent || ocConfig().defaultAgent || undefined,
     location: { directory: workspaceDir() },
     permissions: PERMISSION_PRESETS[permissionModeFor(ctx)],
-    metadata: { source: 'bitch-bot', user: userPart(ctx.sender) }
+    metadata: { source: 'xorizn-bot', user: userPart(ctx.sender) }
   })
   state.sessionId = s.id
   bot.db.save()

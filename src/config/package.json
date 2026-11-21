@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "index.js & settings.js = adaptor konfigurasi untuk plugin classic; pengaturan utama ada di config.json."
+}

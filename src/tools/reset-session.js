@@ -5,7 +5,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { loadConfig } from '../config.js'
+import { loadConfig } from '../core/config.js'
 
 const { config } = loadConfig()
 const dir = config.paths.session

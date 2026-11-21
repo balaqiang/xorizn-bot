@@ -3,7 +3,7 @@
  * Placeholder teks: @user @name @group @count @desc @number
  */
 import bot from '../core/bot.js'
-import logger from '../logger.js'
+import logger from '../core/logger.js'
 import { getGroup } from '../core/models.js'
 import { participantPn, userPart } from '../core/jid.js'
 import { renderCard } from './welcome-card.js'

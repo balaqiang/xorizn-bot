@@ -1,0 +1,242 @@
+
+import { downloadMediaMessage, readRichMessage } from 'xorizn-baileys'
+import { isOwner, isPremium, normalizeJid, normalizeNumber } from './utils.js'
+
+export async function serialize(sock, rawMessage) {
+  if (!rawMessage) return null
+  const m = {}
+
+  m.raw = rawMessage
+  m.key = rawMessage.key || {}
+  m.id = m.key.id
+  m.fromMe = m.key.fromMe || false
+  m.chat = m.key.remoteJid || ''
+  m.isGroup = m.chat.endsWith('@g.us')
+
+  let rawSender = ''
+  if (m.isGroup) {
+    rawSender = m.key.participantAlt || rawMessage.participantAlt || m.key.participant || (m.fromMe ? (sock.user?.id || '') : '')
+  } else {
+    rawSender = m.fromMe ? (sock.user?.id || '') : (m.key.remoteJidAlt || rawMessage.remoteJidAlt || m.chat)
+  }
+
+  if (rawSender.endsWith('@lid')) {
+    const candidatePn = m.key.participantAlt || rawMessage.participantAlt || m.key.remoteJidAlt || rawMessage.remoteJidAlt
+    if (candidatePn && candidatePn.endsWith('@s.whatsapp.net')) {
+      rawSender = candidatePn
+    }
+  }
+
+  const decodedSender = typeof sock.decodeJid === 'function' ? await sock.decodeJid(rawSender) : rawSender
+  m.sender = decodedSender || rawSender || ''
+  m.pushName = rawMessage.pushName || ''
+  m.isOwner = isOwner(m.sender) || (m.fromMe && isOwner(sock.user?.id))
+  m.isPremium = isPremium(m.sender) || m.isOwner
+
+  let msg = rawMessage.message
+  if (msg) {
+    while (
+      msg.ephemeralMessage ||
+      msg.viewOnceMessage ||
+      msg.viewOnceMessageV2 ||
+      msg.viewOnceMessageV2Extension ||
+      msg.documentWithCaptionMessage ||
+      msg.botInvokeMessage ||
+      msg.botForwardedMessage
+    ) {
+      msg =
+        msg.ephemeralMessage?.message ||
+        msg.viewOnceMessage?.message ||
+        msg.viewOnceMessageV2?.message ||
+        msg.viewOnceMessageV2Extension?.message ||
+        msg.documentWithCaptionMessage?.message ||
+        msg.botInvokeMessage?.message ||
+        msg.botForwardedMessage?.message ||
+        msg.botForwardedMessage ||
+        msg
+    }
+
+    m.message = msg
+    m.type = Object.keys(msg)[0] || ''
+    m.mimetype = msg[m.type]?.mimetype || ''
+
+    let richData = null
+    try {
+      richData = readRichMessage(rawMessage) || (rawMessage.message ? readRichMessage(rawMessage.message) : null) || readRichMessage(msg)
+    } catch {}
+    m.rich = richData
+
+    let text = ''
+    if (msg.conversation) {
+      text = msg.conversation
+    } else if (msg.extendedTextMessage?.text) {
+      text = msg.extendedTextMessage.text
+    } else if (msg.imageMessage?.caption) {
+      text = msg.imageMessage.caption
+    } else if (msg.videoMessage?.caption) {
+      text = msg.videoMessage.caption
+    } else if (msg.documentMessage?.caption) {
+      text = msg.documentMessage.caption
+    } else if (msg.buttonsResponseMessage?.selectedButtonId) {
+      text = msg.buttonsResponseMessage.selectedButtonId
+    } else if (msg.buttonsResponseMessage?.selectedDisplayText) {
+      text = msg.buttonsResponseMessage.selectedDisplayText
+    } else if (msg.templateButtonReplyMessage?.selectedId) {
+      text = msg.templateButtonReplyMessage.selectedId
+    } else if (msg.templateButtonReplyMessage?.selectedDisplayText) {
+      text = msg.templateButtonReplyMessage.selectedDisplayText
+    } else if (msg.listResponseMessage?.singleSelectReply?.selectedRowId) {
+      text = msg.listResponseMessage.singleSelectReply.selectedRowId
+    } else if (msg.listResponseMessage?.title) {
+      text = msg.listResponseMessage.title
+    } else if (msg.interactiveResponseMessage) {
+      const nativeFlow = msg.interactiveResponseMessage.nativeFlowResponseMessage
+      if (nativeFlow?.paramsJson) {
+        try {
+          const parsed = JSON.parse(nativeFlow.paramsJson)
+          text = parsed.id || parsed.selectedId || parsed.rowId || parsed.title || nativeFlow.paramsJson
+        } catch {
+          text = nativeFlow.paramsJson
+        }
+      }
+      if (!text && msg.interactiveResponseMessage.body?.text) {
+        text = msg.interactiveResponseMessage.body.text
+      }
+    }
+
+    if (!text && richData?.text) {
+      text = richData.text
+    }
+
+    if (!text && msg[m.type]) {
+      const target = msg[m.type]
+      text =
+        target.text ||
+        target.caption ||
+        target.selectedId ||
+        target.selectedButtonId ||
+        target.singleSelectReply?.selectedRowId ||
+        target.selectedDisplayText ||
+        target.title ||
+        target.description ||
+        ''
+    }
+
+    m.text = text
+
+    const contextInfo = msg[m.type]?.contextInfo
+    if (contextInfo && contextInfo.quotedMessage) {
+      let qMsg = contextInfo.quotedMessage
+      while (
+        qMsg.ephemeralMessage ||
+        qMsg.viewOnceMessage ||
+        qMsg.viewOnceMessageV2 ||
+        qMsg.viewOnceMessageV2Extension ||
+        qMsg.documentWithCaptionMessage ||
+        qMsg.botInvokeMessage ||
+        qMsg.botForwardedMessage
+      ) {
+        qMsg =
+          qMsg.ephemeralMessage?.message ||
+          qMsg.viewOnceMessage?.message ||
+          qMsg.viewOnceMessageV2?.message ||
+          qMsg.viewOnceMessageV2Extension?.message ||
+          qMsg.documentWithCaptionMessage?.message ||
+          qMsg.botInvokeMessage?.message ||
+          qMsg.botForwardedMessage?.message ||
+          qMsg.botForwardedMessage ||
+          qMsg
+      }
+
+      const qType = Object.keys(qMsg)[0] || ''
+      let rawQSender = contextInfo.participantAlt || contextInfo.participant || ''
+      if (rawQSender.endsWith('@lid') && contextInfo.participantAlt && contextInfo.participantAlt.endsWith('@s.whatsapp.net')) {
+        rawQSender = contextInfo.participantAlt
+      }
+      const decodedQSender = typeof sock.decodeJid === 'function' ? await sock.decodeJid(rawQSender) : rawQSender
+      const qSender = decodedQSender || rawQSender || ''
+
+      const decodedMentioned = await Promise.all(
+        (contextInfo.mentionedJid || []).map(async j => (typeof sock.decodeJid === 'function' ? (await sock.decodeJid(j)) : j) || j)
+      )
+
+      let qRichData = null
+      try {
+        qRichData = readRichMessage(contextInfo.quotedMessage) || readRichMessage(qMsg)
+      } catch {}
+
+      m.quoted = {
+        key: {
+          remoteJid: m.chat,
+          fromMe: normalizeNumber(qSender) === normalizeNumber(sock.user?.id || ''),
+          id: contextInfo.stanzaId,
+          participant: contextInfo.participant
+        },
+        sender: qSender,
+        fromMe: normalizeNumber(qSender) === normalizeNumber(sock.user?.id || ''),
+        isOwner: isOwner(qSender),
+        type: qType,
+        mimetype: qMsg[qType]?.mimetype || '',
+        caption: qMsg[qType]?.caption || '',
+        message: qMsg,
+        rich: qRichData,
+        text:
+          qMsg.conversation ||
+          qMsg[qType]?.text ||
+          qMsg[qType]?.caption ||
+          qMsg[qType]?.description ||
+          qRichData?.text ||
+          '',
+        mentionedJid: decodedMentioned,
+        download: async () => downloadMediaMessage({ key: { remoteJid: m.chat, id: contextInfo.stanzaId, participant: contextInfo.participant }, message: qMsg }, 'buffer', {})
+      }
+    } else {
+      m.quoted = null
+    }
+
+    m.mentionedJid = await Promise.all(
+      (contextInfo?.mentionedJid || []).map(async j => (typeof sock.decodeJid === 'function' ? (await sock.decodeJid(j)) : j) || j)
+    )
+  } else {
+    m.message = null
+    m.type = ''
+    m.mimetype = ''
+    m.text = ''
+    m.quoted = null
+    m.mentionedJid = []
+  }
+
+  m.download = async () => downloadMediaMessage(rawMessage, 'buffer', {})
+
+  m.reply = async (text, options = {}) => {
+    const quoted = options.quoted || (typeof sock.getFakeQuoted === 'function' ? sock.getFakeQuoted() : rawMessage)
+    return await sock.sendMessage(
+      m.chat,
+      {
+        text: typeof text === 'string' ? text : String(text),
+        ...options
+      },
+      {
+        ...options,
+        quoted
+      }
+    )
+  }
+
+  m.react = async (emoji) => {
+    try {
+      return await sock.sendMessage(m.chat, {
+        react: {
+          text: emoji,
+          key: m.key
+        }
+      })
+    } catch {}
+  }
+
+  m.fstatus = typeof sock.getFakeQuoted === 'function' ? sock.getFakeQuoted() : null
+
+  return m
+}
+
+export default serialize

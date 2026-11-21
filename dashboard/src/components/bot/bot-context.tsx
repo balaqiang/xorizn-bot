@@ -14,11 +14,11 @@ export type BotStatus = {
 };
 
 type Ctx = { status: BotStatus | null; botName: string; groups: number; refresh: () => void };
-const BotContext = createContext<Ctx>({ status: null, botName: "Bitch Bot", groups: 0, refresh: () => {} });
+const BotContext = createContext<Ctx>({ status: null, botName: "xorizn-bot", groups: 0, refresh: () => {} });
 
 export function BotProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<BotStatus | null>(null);
-  const [botName, setBotName] = useState("Bitch Bot");
+  const [botName, setBotName] = useState("xorizn-bot");
   const [groups, setGroups] = useState(0);
   const refresh = useCallback(() => {
     api("GET", "/api/overview")

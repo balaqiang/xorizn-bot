@@ -1,7 +1,7 @@
 {
-  "name": "bitch-bot",
+  "name": "xorizn-bot",
   "version": "2.0.0",
-  "description": "WhatsApp bot modular (Baileys v7) + dashboard localhost, gabungan fitur Rubby-MD & vanXone, database JSON / SQLite / MySQL (XAMPP).",
+  "description": "xorizn-bot — WhatsApp bot modular (Baileys v7) + dashboard localhost, ±2.400 perintah, database JSON / SQLite / MySQL (XAMPP).",
   "type": "module",
   "main": "src/index.js",
   "private": true,
@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node src/launcher.js",
     "start:raw": "node src/index.js",
-    "dev": "node --watch-path=src --watch-path=plugins src/index.js",
+    "dev": "node --watch-path=src/core --watch-path=src/features --watch-path=src/compat --watch-path=src/dashboard --watch-path=src/utils --watch-path=src/plugins/core src/index.js",
     "check": "node src/index.js --no-connect",
     "reset-session": "node src/tools/reset-session.js",
     "graph": "graphify update .",
@@ -28,7 +28,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/balaqiang/bitch-bot.git"
+    "url": "git+https://github.com/balaqiang/xorizn-bot.git"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -64,13 +64,13 @@
     "pdfkit": "^0.15.0",
     "pino": "^9.6.0",
     "qrcode": "^1.5.4",
-    "ruby-baileys": "file:src/compat/shims/ruby-baileys",
     "sharp": "^0.35.5",
     "sql.js": "^1.17.0",
     "tesseract.js": "^5.1.1",
     "tough-cookie": "^5.1.2",
     "undici": "^6.21.0",
     "wa-sticker-formatter": "^4.4.4",
+    "xorizn-baileys": "file:src/compat/shims/xorizn-baileys",
     "youtubei.js": "^18.1.0"
   },
   "optionalDependencies": {

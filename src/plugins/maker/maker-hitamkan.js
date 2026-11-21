@@ -1,0 +1,2 @@
+// Fitur maker/maker-hitamkan — kode inti di engine/lumen
+module.exports = require('../../lib/engine/lumen').plugin("maker/maker-hitamkan", {"command": ["tofigura", "tofigurav2", "tofigurav3", "tofunk", "tojepang", "tokacamata", "tokamboja", "tolego", "toliquor", "tomaid", "topeci", "topiramida", "toputih", "toreal", "toroblox", "toroh", "totato", "totua", "tounderground", "toviking", "tozombie"], "category": "maker", "owner": false, "group": false, "admin": false, "botAdmin": false, "desc": "Fitur tofunk"})

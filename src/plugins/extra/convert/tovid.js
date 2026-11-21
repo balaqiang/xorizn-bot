@@ -1,0 +1,94 @@
+
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
+import crypto from 'node:crypto'
+import { spawn } from 'node:child_process'
+
+async function convertWebpToMp4(webpBuffer) {
+  const tmpIn = path.join(os.tmpdir(), `tovid_in_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.webp`)
+  const tmpOut = path.join(os.tmpdir(), `tovid_out_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.mp4`)
+
+  await fs.promises.writeFile(tmpIn, webpBuffer)
+
+  return new Promise((resolve, reject) => {
+    const ff = spawn('ffmpeg', [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-y',
+      '-i', tmpIn,
+      '-movflags', 'faststart',
+      '-pix_fmt', 'yuv420p',
+      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+      tmpOut
+    ], { stdio: ['ignore', 'ignore', 'ignore'] })
+
+    ff.on('close', async () => {
+      try {
+        if (fs.existsSync(tmpIn)) await fs.promises.unlink(tmpIn).catch(() => {})
+        if (fs.existsSync(tmpOut)) {
+          const res = await fs.promises.readFile(tmpOut)
+          await fs.promises.unlink(tmpOut).catch(() => {})
+          resolve(res)
+        } else {
+          reject(new Error('Failed to convert webp to mp4'))
+        }
+      } catch (err) {
+        reject(err)
+      }
+    })
+
+    ff.on('error', async (err) => {
+      if (fs.existsSync(tmpIn)) await fs.promises.unlink(tmpIn).catch(() => {})
+      if (fs.existsSync(tmpOut)) await fs.promises.unlink(tmpOut).catch(() => {})
+      reject(err)
+    })
+  })
+}
+
+let handler = async (m, { sock, conn, usedPrefix, command }) => {
+  const client = conn || sock
+  const quoted = m.quoted || m
+  const mime = quoted.mimetype || m.mimetype || ''
+
+  if (!/webp/i.test(mime) && !/gif/i.test(mime)) {
+    return m.reply(`Balas (reply) stiker bergerak / gif dengan command:\n${usedPrefix}${command}`)
+  }
+
+  let buffer
+  try {
+    buffer = typeof quoted.download === 'function' ? await quoted.download() : await m.download()
+  } catch (e) {
+    return m.reply(`Gagal mengunduh media: ${e.message || e}`)
+  }
+
+  if (!buffer || !Buffer.isBuffer(buffer)) {
+    return m.reply('Buffer media tidak valid.')
+  }
+
+  try {
+    const mp4Buffer = await convertWebpToMp4(buffer)
+    return await client.sendMessage(
+      m.chat,
+      {
+        video: mp4Buffer,
+        caption: '✓ Konversi Stiker Animasi ke Video Sukses',
+        mimetype: 'video/mp4'
+      },
+      { quoted: m.raw }
+    )
+  } catch (e) {
+    return m.reply(`Gagal mengonversi stiker ke video:\n${e.message || e}`)
+  }
+}
+
+handler.command = ['tovid', 'tovideo', 'togif']
+handler.owner = false
+handler.premium = false
+handler.group = false
+handler.private = false
+handler.admin = false
+handler.botadmin = false
+handler.noJadiBot = false
+
+export default handler

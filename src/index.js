@@ -1,13 +1,13 @@
 /**
  * Titik masuk bot. Urutan start:
- *   config → database → pengaturan → plugin native → pack (vanXone, Rubby) → dashboard → WhatsApp
+ *   config → database → pengaturan → plugin native → fitur classic & extra → dashboard → WhatsApp
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { loadConfig } from './config.js'
-import logger, { installConsoleBridge } from './logger.js'
+import { loadConfig } from './core/config.js'
+import logger, { installConsoleBridge } from './core/logger.js'
 import bot from './core/bot.js'
-import { Database, createDriver } from './database/index.js'
+import { Database, createDriver } from './core/database/index.js'
 import { defaultSettings } from './core/models.js'
 import { CommandRegistry } from './core/registry.js'
 import { GroupCache, MessageStore } from './core/cache.js'
@@ -38,7 +38,7 @@ async function main() {
   const { config, created, generatedPassword } = loadConfig()
   bot.config = config
   installConsoleBridge()
-  log.info(`Bitch Bot v2 — Node ${process.version}`)
+  log.info(`xorizn-bot v2 — Node ${process.version}`)
   if (created) log.success('config/config.json dibuat dari config.example.json')
 
   bot.db = await initDatabase(config)
@@ -59,31 +59,31 @@ async function main() {
   bot.nativeHooks = native.hooks
   log.success(`${native.entries.length} perintah native dimuat${native.failed.length ? ` (${native.failed.length} gagal)` : ''}`)
 
-  // ---------- Fitur vanXone & Rubby ----------
-  // Banyak file vanXone/Rubby memakai path relatif terhadap direktori kerja ('./database/...',
-  // './engine/...', './tmp'), jadi bot selalu dijalankan dari root project.
-  process.chdir(config.paths.root)
-  fs.mkdirSync(path.join(config.paths.root, 'tmp'), { recursive: true })
-  if (config.packs.vanxone) {
+  // ---------- Fitur classic & extra ----------
+  // Banyak file plugin classic/extra memakai path relatif terhadap direktori kerja ('./database/...',
+  // './engine/...', './tmp', './package.json'), jadi direktori kerja bot selalu folder src/.
+  process.chdir(config.paths.src)
+  fs.mkdirSync(path.join(config.paths.src, 'tmp'), { recursive: true })
+  if (config.packs.classic) {
     try {
-      const { loadVanxone } = await import('./compat/vanxone.js')
-      bot.packs.vanxone = await loadVanxone()
+      const { loadClassic } = await import('./compat/classic.js')
+      bot.packs.classic = await loadClassic()
     } catch (err) {
-      log.error('pack vanXone gagal dimuat:', err)
+      log.error('fitur classic gagal dimuat:', err)
     }
   }
-  if (config.packs.rubby) {
+  if (config.packs.extra) {
     try {
-      const { loadRubby } = await import('./compat/rubby.js')
-      bot.packs.rubby = await loadRubby()
+      const { loadExtra } = await import('./compat/extra.js')
+      bot.packs.extra = await loadExtra()
     } catch (err) {
-      log.error('pack Rubby gagal dimuat:', err)
+      log.error('fitur extra gagal dimuat:', err)
     }
   }
   reassertGlobals()
   syncGlobals()
   const counts = bot.registry.counts()
-  log.success(`total ${bot.registry.active().length} perintah aktif (native ${counts.native || 0}, vanxone ${counts.vanxone || 0}, rubby ${counts.rubby || 0})`)
+  log.success(`total ${bot.registry.active().length} perintah aktif (native ${counts.native || 0}, classic ${counts.classic || 0}, extra ${counts.extra || 0})`)
 
   // ---------- Dashboard ----------
   if (config.dashboard.enabled) {

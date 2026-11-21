@@ -1,5 +1,5 @@
 {
-  "name": "bitch-bot-dashboard",
+  "name": "xorizn-bot-dashboard",
   "version": "2.0.0",
   "private": true,
   "description": "Dashboard bot (Next.js + TailAdmin). Hasil build statis di out/ disajikan oleh bot.",

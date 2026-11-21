@@ -1,0 +1,11 @@
+{
+  "name": "xorizn-baileys",
+  "version": "0.0.0-shim",
+  "description": "Lapisan kompatibilitas lokal di atas Baileys resmi: meneruskan semua ekspor + builder tombol/carousel yang dipakai plugin extra.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "private": true
+}

@@ -55,7 +55,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 xl:grid-cols-4">
           <StatCard icon={<WhatsappIcon />} title="Grup" value={fmtNum(o.counts.groups)} hint="diikuti bot" />
           <StatCard icon={<UserCircleIcon />} title="Pengguna" value={fmtNum(o.counts.users)} hint={`${fmtNum(o.counts.premium)} premium • ${fmtNum(o.counts.banned)} diblokir`} tone="info" />
-          <StatCard icon={<PluginIcon />} title="Perintah aktif" value={fmtNum(o.counts.commands)} hint={`native ${src.native || 0} • vanXone ${src.vanxone || 0} • Rubby ${src.rubby || 0}`} tone="success" />
+          <StatCard icon={<PluginIcon />} title="Perintah aktif" value={fmtNum(o.counts.commands)} hint={`native ${src.native || 0} • classic ${src.classic || 0} • extra ${src.extra || 0}`} tone="success" />
           <StatCard icon={<ClockIcon />} title="Uptime" value={fmtDur(o.uptime)} hint={`${fmtNum(o.runtime.messages)} pesan • ${fmtNum(o.runtime.commands)} perintah`} tone="warning" />
         </div>
 

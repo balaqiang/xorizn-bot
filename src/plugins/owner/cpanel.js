@@ -1,0 +1,2 @@
+// Fitur owner/cpanel — kode inti di engine/lumen
+module.exports = require('../../lib/engine/lumen').plugin("owner/cpanel", {"command": ["10gb", "1gb", "2gb", "3gb", "4gb", "5gb", "6gb", "7gb", "8gb", "9gb", "createadmin", "deladmin", "delpanel", "listpanel", "pannel", "unli", "unlimited"], "category": "owner", "owner": true, "group": false, "admin": false, "botAdmin": false, "desc": "Fitur pannel"})

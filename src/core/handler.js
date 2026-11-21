@@ -1,10 +1,10 @@
 /**
  * Alur pemrosesan setiap pesan masuk:
  *   serialize → simpan statistik → fitur pasif (moderasi, AFK, auto-respon, hook pack)
- *   → parse perintah → cek izin → jalankan plugin (native / vanxone / rubby)
+ *   → parse perintah → cek izin → jalankan plugin (native / classic / extra)
  */
 import bot from './bot.js'
-import logger from '../logger.js'
+import logger from './logger.js'
 import { serialize } from './serialize.js'
 import { getGroup, getUser, isOwner, isPremium } from './models.js'
 import { participantMatches, userPart } from './jid.js'

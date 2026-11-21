@@ -1,5 +1,5 @@
 /**
- * Registri perintah gabungan. Setiap sumber ("native", "vanxone", "rubby") mendaftarkan entri:
+ * Registri perintah gabungan. Setiap sumber ("native", "classic", "extra") mendaftarkan entri:
  *   { id, source, name, aliases[], category, description, usage, flags{}, hidden, file, exec(m, ctx) }
  * Bila nama perintah bentrok, pemenang ditentukan oleh settings.commandProviders (pilihan manual
  * dari dashboard) lalu settings.providerOrder.
@@ -55,7 +55,7 @@ export class CommandRegistry {
   /** Semua penyedia untuk satu nama perintah, urut prioritas. */
   providers(name) {
     const key = String(name || '').toLowerCase()
-    const order = bot.settings?.providerOrder || ['native', 'vanxone', 'rubby']
+    const order = bot.settings?.providerOrder || ['native', 'classic', 'extra']
     const list = []
     for (const src of [...order, ...[...this.sources.keys()].filter((s) => !order.includes(s))]) {
       const e = this.sources.get(src)?.get(key)

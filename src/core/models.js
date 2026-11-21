@@ -10,7 +10,7 @@ export const DEFAULT_GOODBYE = 'Selamat tinggal @user 👋\nSemoga betah di temp
 
 export function defaultSettings(config) {
   return {
-    botName: config.bot.name || 'Bitch Bot',
+    botName: config.bot.name || 'xorizn-bot',
     ownerName: config.bot.ownerName || 'Owner',
     owners: (config.bot.owners || []).map(digits).filter(Boolean),
     prefixes: ['.', '!', '#', '/'],
@@ -22,11 +22,13 @@ export function defaultSettings(config) {
     antiCall: false,
     antiCallMessage: 'Maaf, bot tidak menerima panggilan. Panggilanmu ditolak otomatis.',
     cooldown: 2,
-    packname: config.bot.name || 'Bitch Bot',
+    packname: config.bot.name || 'xorizn-bot',
     author: config.bot.ownerName || 'Owner',
-    footer: `© ${config.bot.name || 'Bitch Bot'}`,
+    footer: `© ${config.bot.name || 'xorizn-bot'}`,
     thumbnail: '',
     website: '',
+    /** channel WhatsApp bot: link diisi di dashboard, JID diambil otomatis saat bot tersambung */
+    channel: { url: 'https://whatsapp.com/channel/0029VbEAM5cGJP8FzJH1JH0R', name: 'xorizn-bot', jid: '' },
     timezone: config.bot.timezone || 'Asia/Jakarta',
     welcomeText: DEFAULT_WELCOME,
     goodbyeText: DEFAULT_GOODBYE,
@@ -34,10 +36,10 @@ export function defaultSettings(config) {
     welcomeColor: '#2dd4bf',
     goodbyeColor: '#f43f5e',
     disabledCommands: [],
-    /** override penyedia perintah: { "menu": "native", "tiktok": "rubby" } */
+    /** override penyedia perintah: { "menu": "native", "tiktok": "extra" } */
     commandProviders: {},
     /** urutan prioritas bila nama perintah bentrok */
-    providerOrder: ['native', 'vanxone', 'rubby'],
+    providerOrder: ['native', 'classic', 'extra'],
     /** respon otomatis global: [{ trigger, response, exact }] */
     autoResponses: [],
     /** stiker yang dipetakan ke perintah: { fileSha256(base64): "menu" } */

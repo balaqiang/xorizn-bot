@@ -23,10 +23,10 @@ export default function AppSidebarHeader({
         {showContent ? (
           <span className="flex items-center gap-3">
             <img src="/images/logo/logo-icon.svg" alt="" width={36} height={36} />
-            <span className="text-lg font-bold tracking-wide text-gray-900 uppercase dark:text-white">Bitch Bot</span>
+            <span className="text-lg font-bold tracking-wide text-gray-900 uppercase dark:text-white">xorizn-bot</span>
           </span>
         ) : (
-          <img src="/images/logo/logo-icon.svg" alt="Bitch Bot" width={32} height={32} />
+          <img src="/images/logo/logo-icon.svg" alt="xorizn-bot" width={32} height={32} />
         )}
       </Link>
     </SidebarHeader>

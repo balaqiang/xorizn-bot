@@ -9,13 +9,14 @@ data/
 # konfigurasi lokal (berisi password dashboard & API key) — salin dari config/config.example.json
 config/config.json
 
-# file sementara & berkas sensitif fitur vanXone / Rubby
+# file sementara & berkas sensitif plugin classic / extra
 tmp/
-bin/cookies.txt
-bin/yt-dlp*
-database/plugin-backup/
-database/runtime-settings.json
-plugins/.stage/
+src/bin/cookies.txt
+src/bin/yt-dlp*
+# data runtime plugin classic/engine (dibuat otomatis saat bot berjalan; berisi data pengguna)
+src/database/*
+!src/database/.gitkeep
+src/plugins/.stage/
 
 # hasil graphify (dibangun ulang dengan `npm run graph`)
 graphify-out/

@@ -1,18 +1,18 @@
 /**
- * Jembatan penyimpanan untuk pack lama. Modul penyimpanan vanXone (lib/store.js, lib/jstore.js,
+ * Jembatan penyimpanan untuk pack lama. Modul penyimpanan plugin classic (lib/store.js, lib/jstore.js,
  * lib/db.js, lib/groups.js) memanggil global.__coreStore.open(...) sehingga datanya ikut tersimpan
  * di database pilihan (JSON / SQLite / MySQL). File JSON lama dimigrasikan otomatis sekali.
  */
 import fs from 'node:fs'
 import bot from '../core/bot.js'
-import logger from '../logger.js'
+import logger from '../core/logger.js'
 
 const log = logger.child('store')
 
 export function installStoreBridge() {
   global.__coreStore = {
     /**
-     * @param {string} name      nama unik, mis. "vanxone:bans"
+     * @param {string} name      nama unik, mis. "classic:bans"
      * @param {object} defaults  nilai awal
      * @param {string} [legacyFile] file JSON lama untuk dimigrasikan
      */

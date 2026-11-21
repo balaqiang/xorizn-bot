@@ -6,7 +6,7 @@
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
-import logger from '../logger.js'
+import logger from '../core/logger.js'
 import bot from '../core/bot.js'
 
 const require = createRequire(import.meta.url)

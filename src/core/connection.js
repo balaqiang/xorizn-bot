@@ -16,7 +16,7 @@ import makeWASocket, {
 } from 'baileys'
 import QRCode from 'qrcode'
 import bot from './bot.js'
-import logger, { baileysLogger } from '../logger.js'
+import logger, { baileysLogger } from './logger.js'
 import { SimpleCache } from './cache.js'
 import { onMessagesUpsert } from './handler.js'
 import { onGroupParticipants } from '../features/greetings.js'
@@ -31,6 +31,20 @@ let pairingRequested = false
 let askedConsole = false
 let lastPairNumber = ''
 let stopping = false
+
+/**
+ * Ambil JID channel WhatsApp bot dari link channel di pengaturan (sekali per link).
+ * JID dipakai fitur classic/extra untuk label "Diteruskan dari channel" (global.channelJid).
+ */
+export async function resolveChannel(sock) {
+  const ch = bot.settings.channel || {}
+  const code = String(ch.url || '').match(/whatsapp\.com\/channel\/([A-Za-z0-9]+)/)?.[1]
+  if (!code || (ch.jid && ch.code === code)) return
+  const meta = await sock.newsletterMetadata('invite', code)
+  if (!meta?.id) return
+  bot.saveSettings({ channel: { ...ch, code, jid: meta.id, name: ch.name || meta.thread_metadata?.name?.text || '' } })
+  log.info(`channel bot: ${meta.id}`)
+}
 
 async function waVersion() {
   try {
@@ -155,6 +169,7 @@ export async function connect() {
       bot.setStatus({ connection: 'open', qr: null, pairingCode: null, me })
       log.success(`terhubung sebagai ${me.name || ''} (${me.id})`)
       refreshGroups(true).catch((err) => log.warn('gagal memuat daftar grup:', err.message))
+      resolveChannel(sock).catch((err) => log.warn('gagal membaca channel bot:', err.message))
       for (const pack of Object.values(bot.packs)) pack.onOpen?.(sock)?.catch?.((e) => log.error(`onOpen ${pack.name}:`, e.message))
       for (const hook of bot.nativeHooks || []) if (hook.onOpen) Promise.resolve(hook.onOpen(sock, bot)).catch((e) => log.error(`onOpen ${hook.file}:`, e.message))
     }

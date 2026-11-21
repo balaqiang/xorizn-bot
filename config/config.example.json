@@ -1,6 +1,6 @@
 {
   "bot": {
-    "name": "Bitch Bot",
+    "name": "xorizn-bot",
     "ownerName": "Owner",
     "owners": [],
     "loginMethod": "pairing",
@@ -21,7 +21,7 @@
       "port": 3306,
       "user": "root",
       "password": "",
-      "database": "bitch_bot"
+      "database": "xorizn_bot"
     }
   },
   "dashboard": {
@@ -31,8 +31,8 @@
     "password": ""
   },
   "packs": {
-    "rubby": true,
-    "vanxone": true
+    "classic": true,
+    "extra": true
   },
   "apiKeys": {
     "kyzz": "",

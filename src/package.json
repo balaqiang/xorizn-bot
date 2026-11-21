@@ -1,0 +1,7 @@
+{
+  "name": "xorizn-bot-src",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Kode bot. Direktori kerja bot = folder ini; beberapa plugin classic membaca ./package.json (versi/dokumen contoh)."
+}

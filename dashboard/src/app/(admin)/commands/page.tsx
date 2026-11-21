@@ -87,9 +87,9 @@ function Commands() {
     <>
       <PageTitle title="Modul & Perintah" description="Aktifkan/nonaktifkan perintah dan pilih sumber bila nama bentrok." actions={<Button variant="outline" onClick={reload}><RegenerateIcon /> Muat ulang plugin</Button>} />
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 xl:grid-cols-4">
-        <StatCard icon={<ShootingStarIcon />} title="Native" value={fmtNum(c.native)} hint="plugins/core" />
-        <StatCard icon={<BoxIcon />} title="vanXone" value={fmtNum(c.vanxone)} hint="plugins/<kategori> • engine/" tone="info" />
-        <StatCard icon={<PluginIcon />} title="Rubby-MD" value={fmtNum(c.rubby)} hint="plugins/rubby" tone="warning" />
+        <StatCard icon={<ShootingStarIcon />} title="Native" value={fmtNum(c.native)} hint="src/plugins/core" />
+        <StatCard icon={<BoxIcon />} title="Classic" value={fmtNum(c.classic)} hint="src/plugins • src/engine" tone="info" />
+        <StatCard icon={<PluginIcon />} title="Extra" value={fmtNum(c.extra)} hint="src/plugins/extra" tone="warning" />
         <StatCard icon={<AlertIcon />} title="Bentrok nama" value={fmtNum(data.commands.filter((x) => x.active && x.providers.length > 1).length)} hint="pilih sumbernya di tabel" tone="error" />
       </div>
 
@@ -103,8 +103,8 @@ function Commands() {
             <NativeSelect className="w-auto" value={src} onChange={(e) => setSrc(e.target.value)}>
               <option value="">Semua sumber (aktif)</option>
               <option value="native">Native</option>
-              <option value="vanxone">vanXone</option>
-              <option value="rubby">Rubby</option>
+              <option value="classic">Classic</option>
+              <option value="extra">Extra</option>
             </NativeSelect>
             <NativeSelect className="w-auto" value={only} onChange={(e) => setOnly(e.target.value)}>
               <option value="">Semua status</option>

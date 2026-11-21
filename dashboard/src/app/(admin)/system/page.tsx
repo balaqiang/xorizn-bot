@@ -168,11 +168,11 @@ export default function SystemPage() {
             <Button className="mt-4" onClick={() => patchConfig({ bot: { loginMethod: login.loginMethod, pairingNumber: login.pairingNumber } })}>Simpan</Button>
           </Section>
           <Section title="Sumber fitur">
-            <ToggleRow title="vanXone" description="±2.250 perintah dari plugins/ & engine/ (7 engine). Butuh restart." checked={!!packs.vanxone} onChange={(v) => setPacks({ ...packs, vanxone: v })} />
-            <ToggleRow title="Rubby-MD" description="±270 perintah dari plugins/rubby. Butuh restart." checked={!!packs.rubby} onChange={(v) => setPacks({ ...packs, rubby: v })} />
+            <ToggleRow title="Classic" description="±2.250 perintah dari src/plugins & src/engine (7 engine). Butuh restart." checked={!!packs.classic} onChange={(v) => setPacks({ ...packs, classic: v })} />
+            <ToggleRow title="Extra" description="±270 perintah dari src/plugins/extra. Butuh restart." checked={!!packs.extra} onChange={(v) => setPacks({ ...packs, extra: v })} />
             <Button className="mt-4" onClick={() => patchConfig({ packs })}>Simpan</Button>
           </Section>
-          <Section title="API key" description="Dipakai fitur vanXone & Rubby (downloader, maker, AI, dll). Nilai tersimpan disamarkan.">
+          <Section title="API key" description="Dipakai fitur classic & extra (downloader, maker, AI, dll). Nilai tersimpan disamarkan.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {Object.keys(keys).map((k) => (
                 <FormField key={k} label={k}><Input className="font-mono" value={keys[k]} placeholder="-" onChange={(e) => setKeys({ ...keys, [k]: e.target.value })} /></FormField>

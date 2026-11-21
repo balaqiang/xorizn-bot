@@ -11,12 +11,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [botName, setBotName] = useState("Bitch Bot");
+  const [botName, setBotName] = useState("xorizn-bot");
 
   useEffect(() => {
     api<{ authenticated: boolean; botName: string }>("GET", "/api/session")
       .then((s) => {
-        setBotName(s.botName || "Bitch Bot");
+        setBotName(s.botName || "xorizn-bot");
         if (s.authenticated) router.replace("/");
       })
       .catch(() => setError("Dashboard tidak bisa dihubungi. Pastikan bot sedang berjalan."));

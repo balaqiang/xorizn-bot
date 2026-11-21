@@ -1,16 +1,16 @@
 /**
- * Variabel global yang diharapkan plugin Rubby & vanXone. Diisi dari pengaturan core
+ * Variabel global yang diharapkan plugin classic & extra. Diisi dari pengaturan core
  * dan disinkronkan lagi setiap kali pengaturan berubah (mis. lewat dashboard).
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { AIRich } from 'ruby-baileys'
+import { AIRich } from 'xorizn-baileys'
 import bot from '../core/bot.js'
 import { digits } from '../core/jid.js'
 
 const REACTIONS = { loading: '⏳', wait: '⏳', process: '⏳', success: '✅', done: '✅', error: '❌', fail: '❌' }
 
-/** global.API gabungan: kompatibel gaya Rubby (nama/URL + nama parameter apikey) & vanXone. */
+/** global.API gabungan: kompatibel gaya extra (nama/URL + nama parameter apikey) & classic. */
 function apiUrl(name, p = '/', params = {}, keyParam) {
   const apis = global.APIs || {}
   const base = String(apis[name] || (/^https?:\/\//i.test(name) ? name : '')).replace(/\/+$/, '')
@@ -25,7 +25,7 @@ function apiUrl(name, p = '/', params = {}, keyParam) {
 export function installGlobals() {
   const { config } = bot
   const root = config.paths.root
-  const thumbFile = path.join(root, 'assets', 'images', 'thumbnail.jpg')
+  const thumbFile = path.join(config.paths.assets, 'images', 'thumbnail.jpg')
   let thumbCache = null
 
   global.__core = { bot, config, settings: bot.settings }
@@ -33,8 +33,11 @@ export function installGlobals() {
   global.startTime = bot.startedAt
   global.searchCache = global.searchCache || {}
   global.AIRich = AIRich
-  global.website = bot.settings.website || 'https://github.com/balaqiang/bitch-bot'
-  global.thumb = path.join(root, 'media', 'thumb.jpg')
+  global.website = bot.settings.website || bot.settings.channel?.url || 'https://whatsapp.com/channel/0029VbEAM5cGJP8FzJH1JH0R'
+  // JID channel WhatsApp bot (diisi otomatis dari link channel saat bot tersambung) — dipakai label "Diteruskan dari channel"
+  Object.defineProperty(global, 'channelJid', { configurable: true, get: () => bot.settings.channel?.jid || undefined })
+  Object.defineProperty(global, 'channelLink', { configurable: true, get: () => bot.settings.channel?.url || '' })
+  global.thumb = path.join(config.paths.media, 'thumb.jpg')
   global.getThumbBuffer = () => {
     if (!thumbCache) thumbCache = fs.existsSync(thumbFile) ? fs.readFileSync(thumbFile) : Buffer.alloc(0)
     return thumbCache
@@ -92,7 +95,7 @@ export function syncGlobals() {
   const s = bot.settings
   global.__core.settings = s
   const owners = [...new Set((s.owners || []).map(digits).filter(Boolean))]
-  // global.owner bisa dikunci (non-writable) oleh vanXone → ubah isinya, bukan referensinya
+  // global.owner bisa dikunci (non-writable) oleh plugin classic → ubah isinya, bukan referensinya
   if (Array.isArray(global.owner)) global.owner.splice(0, global.owner.length, ...owners)
   global.botName = global.namaBot = s.botName
   global.botCreator = global.namaOwner = s.ownerName

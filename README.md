@@ -1,10 +1,12 @@
 <div align="center">
-<img src="assets/images/thumbnail.jpg" alt="Bitch Bot" width="220" />
+<img src="src/assets/images/thumbnail.jpg" alt="xorizn-bot" width="220" />
 
-# BITCH BOT v2
+# XORIZN-BOT
 
 Bot WhatsApp multi-device berbasis **Baileys v7** dengan **dashboard web localhost**,
-gabungan fitur **Rubby-MD** + **vanXone** (±2.390 perintah), **AI OpenCode lewat 9router**, dan pilihan database **JSON / SQLite / MySQL (XAMPP)**.
+±2.400 perintah siap pakai, **AI OpenCode lewat 9router**, dan pilihan database **JSON / SQLite / MySQL (XAMPP)**.
+
+📢 Channel: https://whatsapp.com/channel/0029VbEAM5cGJP8FzJH1JH0R
 
 </div>
 
@@ -18,7 +20,7 @@ gabungan fitur **Rubby-MD** + **vanXone** (±2.390 perintah), **AI OpenCode lewa
 - **Welcome & goodbye bergambar** memakai [`discord-canvas`](https://www.npmjs.com/package/discord-canvas) — teks, warna, dan latar bisa diatur per grup, lengkap dengan pratinjau di dashboard.
 - **Database pilihan**: `json` (satu file), `sqlite` (bawaan Node, tanpa instalasi), `mysql` (XAMPP/MariaDB). Data bisa dipindah antar-driver dari dashboard.
 - **Fitur grup native**: anti-link (hapus/peringatan/kick), anti kata kasar, peringatan, bot on/off per grup, mode hanya-admin, NSFW per grup, auto-stiker, auto-respon, notifikasi promote/demote, hidetag/tagall, kick/add/promote/demote, buka/tutup grup, dll.
-- **Semua fitur vanXone & Rubby** digabung langsung ke project: vanXone v1.32 (2.257 plugin dari 7 engine) dan Rubby-MD v1.5 (268 plugin).
+- **±2.400 perintah**: 82 plugin native, 2.257 plugin *classic* (CommonJS, 7 engine), dan 268 plugin *extra* (ESM).
 - **Graphify** terpasang untuk memetakan kode project menjadi knowledge graph.
 
 ## Persyaratan
@@ -34,8 +36,8 @@ gabungan fitur **Rubby-MD** + **vanXone** (±2.390 perintah), **AI OpenCode lewa
 ## Instalasi
 
 ```bash
-git clone https://github.com/balaqiang/bitch-bot
-cd bitch-bot
+git clone https://github.com/balaqiang/xorizn-bot
+cd xorizn-bot
 npm install
 npm start
 ```
@@ -55,7 +57,7 @@ Saat start pertama:
 
 ```bash
 pkg install nodejs-lts git ffmpeg python build-essential
-git clone https://github.com/balaqiang/bitch-bot && cd bitch-bot
+git clone https://github.com/balaqiang/xorizn-bot && cd xorizn-bot
 npm install && npm start
 ```
 
@@ -67,7 +69,7 @@ Bila paket `canvas` gagal dibangun di Termux, kartu welcome otomatis memakai ren
 |---|---|
 | `npm start` | Jalankan bot lewat launcher (auto-restart saat crash / tombol Restart di dashboard) |
 | `npm run start:raw` | Jalankan langsung tanpa launcher |
-| `npm run dev` | Mode pengembangan (restart otomatis saat file `src/` atau `plugins/` berubah) |
+| `npm run dev` | Mode pengembangan (restart otomatis saat kode core berubah: `src/core`, `src/features`, `src/compat`, `src/dashboard`, `src/utils`, `src/plugins/core`) |
 | `npm run check` | Muat semua plugin & dashboard tanpa menyambung ke WhatsApp |
 | `npm run reset-session` | Pindahkan sesi login ke cadangan untuk login ulang / ganti nomor |
 | `npm run build:dashboard` | Build ulang dashboard Next.js (hanya perlu bila mengubah `dashboard/src`) |
@@ -82,12 +84,12 @@ Atur di dashboard → **Sistem & Database**, atau `config/config.json`:
   "driver": "json",                                  // json | sqlite | mysql
   "json":   { "file": "data/database.json" },
   "sqlite": { "file": "data/database.sqlite" },
-  "mysql":  { "host": "127.0.0.1", "port": 3306, "user": "root", "password": "", "database": "bitch_bot" }
+  "mysql":  { "host": "127.0.0.1", "port": 3306, "user": "root", "password": "", "database": "xorizn_bot" }
 }
 ```
 
 **Memakai XAMPP:** buka XAMPP Control Panel → *Start* modul **MySQL** → di dashboard pilih *MySQL / XAMPP* → **Tes koneksi** → **Pindahkan data & pakai** → restart.
-Database `bitch_bot` dan tabel `bot_store` dibuat otomatis (lihat isinya di phpMyAdmin).
+Database `xorizn_bot` dan tabel `bot_store` dibuat otomatis (lihat isinya di phpMyAdmin).
 
 Semua driver menyimpan baris `(collection, id, data JSON)` sehingga data bisa dipindah bolak-balik tanpa kehilangan isi.
 Bila MySQL mati saat bot start, bot tetap jalan memakai JSON sementara dan dashboard menampilkan peringatan.
@@ -151,42 +153,45 @@ Mengubah tampilan: edit file di `dashboard/src`, lalu `npm run build:dashboard` 
 ## Struktur project
 
 ```
-bitch-bot/
-├── src/                      # core bot (ESM)
+xorizn-bot/
+├── src/                      # semua kode bot
 │   ├── index.js              # titik masuk: config → db → plugin → dashboard → WhatsApp
 │   ├── launcher.js           # menjalankan & me-restart index.js
+│   ├── package.json          # dibaca beberapa plugin classic (./package.json)
 │   ├── core/                 # koneksi Baileys, serializer, handler, registri perintah, cache, model data
-│   ├── database/             # Database + driver json / sqlite / mysql
-│   ├── features/             # welcome (discord-canvas), moderasi, AFK, auto-respon, stiker
-│   ├── compat/               # adapter vanXone & Rubby, global bersama, shim ruby-baileys
-│   ├── dashboard/            # server Express + SPA (public/)
-│   └── utils/  tools/
-├── plugins/
-│   ├── core/                 # plugin native (main, group, owner, tools) — ESM
-│   ├── rubby/                # plugin Rubby-MD per kategori — ESM
-│   └── <kategori>/           # plugin vanXone: ai, downloader, game, group, tools, ... — CommonJS
-├── engine/                   # 7 engine vanXone: aurora, lumen, nimbus, orbit, pulse, vortex, zenith
-├── lib/                      # library vanXone (CommonJS) + runtime.js
-│   └── rubby/                # library Rubby (ESM)
-├── scrape/                   # scraper Rubby
-├── dashboard/                # dashboard Next.js + TailAdmin (src/ = sumber, out/ = hasil build yang disajikan bot)
+│   │   ├── config.js         # pemuat config/config.json + daftar path
+│   │   ├── logger.js
+│   │   └── database/         # Database + driver json / sqlite / mysql
+│   ├── features/             # welcome (discord-canvas), moderasi, AFK, auto-respon, stiker, OpenCode, pembaca media
+│   ├── compat/               # adapter classic & extra, global bersama, modul xorizn-baileys
+│   ├── dashboard/server.js   # server Express: API + menyajikan dashboard/out
+│   ├── utils/  tools/
+│   ├── plugins/
+│   │   ├── core/             # plugin native (main, group, owner, tools, ai) — ESM
+│   │   ├── extra/            # plugin extra per kategori — ESM
+│   │   └── <kategori>/       # plugin classic: ai, downloader, game, group, tools, ... — CommonJS
+│   ├── engine/               # 7 engine: aurora, lumen, nimbus, orbit, pulse, vortex, zenith
+│   ├── lib/                  # library classic (CommonJS) + runtime.js
+│   │   └── extra/            # library extra (ESM)
+│   ├── config/               # adaptor konfigurasi untuk plugin classic (index.js, settings.js — membaca dari core)
+│   ├── scrape/               # scraper plugin extra
+│   ├── database/             # data runtime plugin classic/engine (dibuat otomatis, tidak di-commit)
+│   ├── media/  assets/  bin/ # gambar, font, media menu, aset maker, alat (yt-dlp)
+│   └── tmp/                  # file sementara (tidak di-commit)
 ├── config/
 │   ├── config.example.json   # template konfigurasi (di-commit)
-│   ├── config.json           # konfigurasi lokal (TIDAK di-commit: password & API key)
-│   └── index.js settings.js  # adaptor konfigurasi untuk kode vanXone (membaca dari core)
-├── database/                 # data bawaan vanXone (soal kuis, dll.)
-├── media/  assets/  bin/     # gambar, font, media menu, aset maker, alat (yt-dlp)
-├── docs/                     # dokumentasi asli vanXone & Rubby (FITUR.md, LICENSE, ...)
-├── tmp/                      # file sementara (tidak di-commit)
+│   └── config.json           # konfigurasi lokal (TIDAK di-commit: password & API key)
+├── dashboard/                # dashboard Next.js + TailAdmin (src/ = sumber, out/ = hasil build yang disajikan bot)
+├── docs/                     # daftar fitur (FITUR.md), panduan AutoOrder, lisensi pihak ketiga (licenses/)
 └── data/                     # runtime: sesi, database, cadangan (tidak di-commit)
 ```
 
-Tiap folder ber-format modul berbeda punya `package.json` kecil (`"type": "commonjs"` / `"module"`), jadi file vanXone (CommonJS) dan Rubby/core (ESM) bisa hidup berdampingan.
-Bot selalu dijalankan dengan direktori kerja = root project, karena banyak kode vanXone/Rubby memakai path relatif (`./database/...`, `./engine/...`, `./tmp`).
+Tiap folder ber-format modul berbeda punya `package.json` kecil (`"type": "commonjs"` / `"module"`), jadi plugin classic (CommonJS) dan extra/core (ESM) bisa hidup berdampingan.
+Saat berjalan, direktori kerja bot = folder `src/`, karena banyak plugin classic/extra memakai path relatif (`./database/...`, `./engine/...`, `./tmp`). Data runtime (sesi, database pilihan, cadangan) tetap di `data/` dan konfigurasi di `config/` pada root project.
 
 ## Membuat plugin native
 
-Taruh file `.js` di `plugins/core/<kategori>/`. Satu file boleh berisi satu objek atau array objek.
+Taruh file `.js` di `src/plugins/core/<kategori>/`. Satu file boleh berisi satu objek atau array objek.
 
 ```js
 export default {
@@ -206,21 +211,22 @@ export default {
 
 Muat ulang tanpa restart: kirim `.reload` (owner) atau tombol **Muat ulang plugin** di dashboard.
 
-## Bagaimana fitur Rubby & vanXone dijalankan
+## Bagaimana fitur classic & extra dijalankan
 
-- Core yang mengurus koneksi, prefix, izin (owner/premium/admin/grup), statistik, dan dashboard. Kode vanXone (`lib/runtime.js`) dan Rubby (`lib/rubby/`) hanya menyediakan perintah.
-- Plugin format vanXone (`run(ctx)`, CommonJS) ditaruh di `plugins/<kategori>/`; format Rubby (`handler(m, ctx)`, ESM) di `plugins/rubby/<kategori>/`; format native di `plugins/core/<kategori>/`.
-- Bila nama perintah dipakai lebih dari satu sumber, urutan default **native → vanxone → rubby**. Ubah per perintah di dashboard (*Modul & Perintah* → kolom *Sumber*) atau `.provider <perintah> <sumber>`.
-- Penyimpanan internal vanXone (`lib/store.js`, `jstore.js`, `db.js`, `groups.js`) diarahkan ke database pilihan; file JSON lamanya dimigrasi otomatis sekali. Penyimpanan internal engine vanXone lain tetap berupa file di `engine/` dan `database/`.
-- Database Rubby (`lib/rubby/database.js`) diteruskan ke database core: premium, user, welcome/goodbye, dan plugin nonaktif sama dengan yang tampil di dashboard. Perintah owner Rubby `setnamebot`/`setthumb`/`setweb` kini menyimpan ke pengaturan bot.
+- Core yang mengurus koneksi, prefix, izin (owner/premium/admin/grup), statistik, dan dashboard. Runtime classic (`src/lib/runtime.js`) dan extra (`src/lib/extra/`) hanya menyediakan perintah.
+- Plugin classic (`run(ctx)`, CommonJS) ditaruh di `src/plugins/<kategori>/`; plugin extra (`handler(m, ctx)`, ESM) di `src/plugins/extra/<kategori>/`; format native di `src/plugins/core/<kategori>/`.
+- Bila nama perintah dipakai lebih dari satu sumber, urutan default **native → classic → extra**. Ubah per perintah di dashboard (*Modul & Perintah* → kolom *Sumber*) atau `.provider <perintah> <sumber>`.
+- Penyimpanan internal plugin classic (`src/lib/store.js`, `jstore.js`, `db.js`, `groups.js`) diarahkan ke database pilihan (nilai awalnya ada di kode; file JSON lama di `src/database/` bila ada dimigrasi otomatis sekali). Penyimpanan internal engine lain tetap berupa file di `src/engine/` dan `src/database/`.
+- Database plugin extra (`src/lib/extra/database.js`) diteruskan ke database core: premium, user, welcome/goodbye, dan plugin nonaktif sama dengan yang tampil di dashboard. Perintah owner extra `setnamebot`/`setthumb`/`setweb` kini menyimpan ke pengaturan bot.
 
 ### Perubahan keamanan
 
-- `ruby-baileys` (dependensi Rubby) sudah **ditarik dari npm** (yang tersisa hanya `0.0.1-security`). Diganti shim lokal `src/compat/shims/ruby-baileys` di atas Baileys resmi.
-- `main.js` Rubby **diobfuscate** — tidak dipakai. Fungsinya ditulis ulang di `src/compat/`.
-- Auto-join saluran & grup milik pembuat vanXone (`lib/autojoin.js`) **tidak dijalankan**.
-- Kunci/token bawaan vanXone (token GitHub, bot Telegram, payment gateway AutoOrder, shoppanel) **tidak dipakai**; isi milikmu sendiri di `config/config.json` → `apiKeys` / `integrations`.
+- Paket Baileys turunan yang dipakai plugin extra sudah **ditarik dari npm**. Diganti modul lokal `src/compat/shims/xorizn-baileys` di atas Baileys resmi.
+- `main.js` asli plugin extra **diobfuscate** — tidak dipakai. Fungsinya ditulis ulang di `src/compat/`.
+- Auto-join saluran & grup milik pembuat lama beserta kunci anti-ubahnya (`lib/autojoin.js`, `lib/integrity.js`) **dihapus**.
+- Kunci/token bawaan pembuat lama (token GitHub, bot Telegram, payment gateway AutoOrder, shoppanel, kunci API neoxr & kyzz) **tidak dipakai**; isi milikmu sendiri di `config/config.json` → `apiKeys` / `integrations`.
 - File asli yang diganti disimpan di `data/backup/originals/`, dan salinan utuh folder `packs/` sebelum digabung ada di `data/backup/packs-2026-11-21.tar.gz` (keduanya tidak di-commit; versi lengkapnya juga ada di riwayat git).
+- Banner, kredit, dan link channel pembuat lama sudah dihapus. Semua link channel mengarah ke channel bot — ubah di dashboard → *Pengaturan Bot → Link channel WhatsApp* (JID channel diambil otomatis saat bot tersambung).
 
 ## Graphify
 
@@ -243,7 +249,7 @@ Folder yang diabaikan ada di `.graphifyignore`. Di Claude Code ketik `/graphify 
 | "Perintah khusus owner" padahal owner | Isi nomor di *Pengaturan Bot → Nomor owner* (format `628xxx`). |
 | MySQL `ECONNREFUSED` | Start MySQL di XAMPP, cek host/port/user di *Sistem & Database*. |
 | Dashboard tidak bisa dibuka dari HP | Ubah host dashboard ke `0.0.0.0` (pakai password kuat), restart. |
-| Fitur vanXone/Rubby error "apikey" | Isi `apiKeys` di *Sistem & Database* atau `config/config.json`. |
+| Fitur classic/extra error "apikey" | Isi `apiKeys` di *Sistem & Database* atau `config/config.json` (mis. `neoxr`, `kyzz`). |
 | `.oc` menjawab "Server OpenCode tidak bisa dihubungi" | Nyalakan OpenCode: `.ocstart`, tombol *Jalankan OpenCode* di dashboard, atau `opencode service start`. |
 | `.oc` menjawab "Kuota / rate limit habis" | Kuota model di 9router habis (mis. Gemini gratis). Pilih model lain dengan `.ocmodels` → `.ocmodel <nomor>`. |
 | Voice note tidak terbaca | Isi API key 9router di dashboard → *AI / OpenCode* → *Transkripsi audio*. |
@@ -253,5 +259,5 @@ Folder yang diabaikan ada di `.graphifyignore`. Di Claude Code ketik `/graphify 
 
 - [WhiskeySockets/Baileys](https://github.com/WhiskeySockets/Baileys) · [discord-canvas](https://github.com/xixi52/discord-canvas) · [Graphify](https://github.com/Graphify-Labs/graphify)
 - [TailAdmin Free Next.js](https://github.com/TailAdmin/free-nextjs-admin-dashboard) · [OpenCode](https://opencode.ai) · [9router](https://github.com/decolua/9router)
-- Rubby-MD oleh Kyuu · vanXone oleh Vann
+- Lisensi kode pihak ketiga yang dipakai ada di `docs/licenses/`.
 - Versi awal: [dcode-denpa](https://github.com/dcode-denpa) · [MhankBarBar](https://github.com/MhankBarBar)

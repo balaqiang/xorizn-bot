@@ -9,7 +9,7 @@ import "./globals.css";
 const outfit = Outfit({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Bitch Bot — Dashboard",
+  title: "xorizn-bot — Dashboard",
   description: "Dashboard pengaturan bot WhatsApp",
   icons: { icon: "/images/logo/logo-icon.svg" },
 };

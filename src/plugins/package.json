@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "Plugin classic (CommonJS) per kategori. plugins/core = plugin native, plugins/extra = plugin extra (ESM)."
+}

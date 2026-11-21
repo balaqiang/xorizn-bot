@@ -3,7 +3,7 @@
  * supaya database selesai tersimpan dulu. Exit code 100 = minta launcher menyalakan ulang bot.
  */
 import bot from './bot.js'
-import logger from '../logger.js'
+import logger from './logger.js'
 
 const log = logger.child('main')
 export const RESTART_CODE = 100

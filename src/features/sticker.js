@@ -41,7 +41,7 @@ export async function addExif(webp, packname, author) {
   const img = new webpmux.Image()
   await img.load(webp)
   const json = {
-    'sticker-pack-id': `bitch-bot-${crypto.randomBytes(6).toString('hex')}`,
+    'sticker-pack-id': `xorizn-bot-${crypto.randomBytes(6).toString('hex')}`,
     'sticker-pack-name': packname || '',
     'sticker-pack-publisher': author || '',
     emojis: ['🤖']

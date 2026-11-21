@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "Library plugin classic (CommonJS). lib/extra berisi library plugin extra (ESM)."
+}

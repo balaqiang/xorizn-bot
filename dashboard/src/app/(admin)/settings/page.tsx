@@ -20,7 +20,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (data && !f) {
       const s = data.settings;
-      setF({ ...s, ownersText: s.owners.join(", "), prefixText: s.prefixes.join(" "), orderText: s.providerOrder.join(" > ") });
+      setF({ ...s, ownersText: s.owners.join(", "), prefixText: s.prefixes.join(" "), orderText: s.providerOrder.join(" > "), channelUrl: s.channel?.url || "", channelName: s.channel?.name || "" });
     }
   }, [data, f]);
 
@@ -67,8 +67,16 @@ export default function SettingsPage() {
               <FormField label="Author stiker"><Input value={f.author} onChange={set("author")} /></FormField>
               <FormField label="Footer" className="sm:col-span-2"><Input value={f.footer} onChange={set("footer")} /></FormField>
               <FormField label="Zona waktu"><Input value={f.timezone} onChange={set("timezone")} /></FormField>
+              <FormField label="Nama channel"><Input value={f.channelName} onChange={set("channelName")} /></FormField>
+              <FormField
+                label="Link channel WhatsApp"
+                help={s.channel?.jid ? `JID: ${s.channel.jid}` : "JID diambil otomatis saat bot tersambung. Dipakai di menu & label \"Diteruskan dari channel\"."}
+                className="sm:col-span-2"
+              >
+                <Input className="font-mono" value={f.channelUrl} placeholder="https://whatsapp.com/channel/..." onChange={set("channelUrl")} />
+              </FormField>
             </div>
-            <Button className="mt-5" onClick={() => save({ botName: f.botName, ownerName: f.ownerName, owners: f.ownersText.split(/[,\s]+/).filter(Boolean), packname: f.packname, author: f.author, footer: f.footer, timezone: f.timezone })}>
+            <Button className="mt-5" onClick={() => save({ botName: f.botName, ownerName: f.ownerName, owners: f.ownersText.split(/[,\s]+/).filter(Boolean), packname: f.packname, author: f.author, footer: f.footer, timezone: f.timezone, channel: { url: f.channelUrl.trim(), name: f.channelName } })}>
               Simpan identitas
             </Button>
           </Section>

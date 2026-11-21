@@ -1,5 +1,5 @@
 /**
- * Loader plugin native (folder plugins/core). Format plugin:
+ * Loader plugin native (folder src/plugins/core). Format plugin:
  *
  *   export default {
  *     command: ['kick', 'tendang'],   // nama pertama = nama utama
@@ -15,7 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import logger from '../logger.js'
+import logger from './logger.js'
 
 const log = logger.child('plugins')
 
