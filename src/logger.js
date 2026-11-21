@@ -34,6 +34,7 @@ class Logger extends EventEmitter {
     const message = args
       .map((a) => (a instanceof Error ? a.stack || a.message : typeof a === 'string' ? a : util.inspect(a, { depth: 3, breakLength: 120 })))
       .join(' ')
+      .replace(/\x1b\[[0-9;]*m/g, '') // buang kode warna ANSI dari log plugin
     const entry = { time: Date.now(), level, scope, message }
     this.buffer.push(entry)
     if (this.buffer.length > MAX_BUFFER) this.buffer.splice(0, this.buffer.length - MAX_BUFFER)

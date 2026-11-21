@@ -1,5 +1,5 @@
 /**
- * Loader plugin native (folder /plugins). Format plugin:
+ * Loader plugin native (folder plugins/core). Format plugin:
  *
  *   export default {
  *     command: ['kick', 'tendang'],   // nama pertama = nama utama

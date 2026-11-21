@@ -10,8 +10,12 @@
   },
   "database": {
     "driver": "json",
-    "json": { "file": "data/database.json" },
-    "sqlite": { "file": "data/database.sqlite" },
+    "json": {
+      "file": "data/database.json"
+    },
+    "sqlite": {
+      "file": "data/database.sqlite"
+    },
     "mysql": {
       "host": "127.0.0.1",
       "port": 3306,
@@ -55,6 +59,24 @@
     "autoorder": {
       "apiKey": "",
       "baseUrl": "https://auto-order.alxzyy.my.id/api/v2"
+    }
+  },
+  "opencode": {
+    "enabled": true,
+    "url": "",
+    "username": "opencode",
+    "password": "",
+    "directory": "",
+    "defaultModel": "",
+    "defaultVariant": "",
+    "defaultAgent": "build",
+    "access": "owner",
+    "permissionMode": "safe",
+    "timeoutSec": 300,
+    "router": {
+      "url": "http://localhost:20128/v1",
+      "apiKey": "",
+      "audioModel": ""
     }
   }
 }

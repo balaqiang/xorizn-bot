@@ -26,6 +26,7 @@ export function defaultSettings(config) {
     author: config.bot.ownerName || 'Owner',
     footer: `© ${config.bot.name || 'Bitch Bot'}`,
     thumbnail: '',
+    website: '',
     timezone: config.bot.timezone || 'Asia/Jakarta',
     welcomeText: DEFAULT_WELCOME,
     goodbyeText: DEFAULT_GOODBYE,

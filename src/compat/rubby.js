@@ -1,5 +1,5 @@
 /**
- * Adapter pack Rubby-MD (ESM, ±268 perintah). Memakai PluginRegistry & serializer asli Rubby,
+ * Adapter fitur Rubby-MD (ESM, ±268 perintah di plugins/rubby). Memakai PluginRegistry & serializer asli Rubby (lib/rubby),
  * tetapi berjalan di atas Baileys resmi lewat shim "ruby-baileys" dan sock turunan (fake-quote
  * khas Rubby hanya berlaku untuk balasan plugin Rubby).
  */
@@ -11,15 +11,14 @@ import logger from '../logger.js'
 const log = logger.child('rubby')
 
 export async function loadRubby() {
-  const dir = path.join(bot.config.paths.packs, 'rubby')
-  const imp = (rel) => import(pathToFileURL(path.join(dir, rel)).href)
+  const imp = (rel) => import(pathToFileURL(path.join(bot.config.paths.lib, 'rubby', rel)).href)
   const [{ PluginRegistry }, { serialize }, { bindMessageHelpers }] = await Promise.all([
-    imp('lib/plugins.js'),
-    imp('lib/serializer.js'),
-    imp('lib/message.js')
+    imp('plugins.js'),
+    imp('serializer.js'),
+    imp('message.js')
   ])
 
-  const registry = new PluginRegistry(path.join(dir, 'plugins'))
+  const registry = new PluginRegistry(bot.config.paths.rubbyPlugins)
   await registry.loadAll()
 
   const socks = new WeakMap()

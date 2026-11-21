@@ -33,8 +33,8 @@ export function installGlobals() {
   global.startTime = bot.startedAt
   global.searchCache = global.searchCache || {}
   global.AIRich = AIRich
-  global.website = 'https://github.com/dcode-denpa/bitch-boot'
-  global.thumb = path.join(root, 'packs', 'rubby', 'media', 'thumb.jpg')
+  global.website = bot.settings.website || 'https://github.com/balaqiang/bitch-bot'
+  global.thumb = path.join(root, 'media', 'thumb.jpg')
   global.getThumbBuffer = () => {
     if (!thumbCache) thumbCache = fs.existsSync(thumbFile) ? fs.readFileSync(thumbFile) : Buffer.alloc(0)
     return thumbCache

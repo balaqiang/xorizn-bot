@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "Plugin format vanXone (CommonJS) per kategori. plugins/core = plugin native, plugins/rubby = plugin Rubby (ESM)."
+}

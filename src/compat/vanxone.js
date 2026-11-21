@@ -1,6 +1,6 @@
 /**
- * Adapter pack vanXone (CommonJS, ±2.400 perintah dari 7 engine). Memuat packs/vanxone/runtime.js
- * lalu mendaftarkan semua plugin-nya ke registri core.
+ * Adapter fitur vanXone (CommonJS, ±2.250 perintah dari 7 engine). Memuat lib/runtime.js lalu
+ * mendaftarkan semua plugin di plugins/<kategori> ke registri core.
  */
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -12,8 +12,7 @@ import { normalizeMessageContent } from 'baileys'
 const log = logger.child('vanxone')
 
 export async function loadVanxone() {
-  const dir = path.join(bot.config.paths.packs, 'vanxone')
-  const require = createRequire(path.join(dir, 'runtime.js'))
+  const require = createRequire(path.join(bot.config.paths.lib, 'runtime.js'))
   const runtime = require('./runtime.js')
   runtime.init()
   const result = runtime.loadPlugins()

@@ -59,14 +59,11 @@ async function main() {
   bot.nativeHooks = native.hooks
   log.success(`${native.entries.length} perintah native dimuat${native.failed.length ? ` (${native.failed.length} gagal)` : ''}`)
 
-  // ---------- Pack ----------
-  // Banyak file vanXone memakai path relatif ('./database/...', './engine/...') karena dulu dijalankan
-  // dari foldernya sendiri. Core selalu memakai path absolut, jadi direktori kerja dipindah ke pack vanXone.
-  if (config.packs.vanxone) {
-    const dir = path.join(config.paths.packs, 'vanxone')
-    fs.mkdirSync(path.join(dir, 'tmp'), { recursive: true })
-    process.chdir(dir)
-  }
+  // ---------- Fitur vanXone & Rubby ----------
+  // Banyak file vanXone/Rubby memakai path relatif terhadap direktori kerja ('./database/...',
+  // './engine/...', './tmp'), jadi bot selalu dijalankan dari root project.
+  process.chdir(config.paths.root)
+  fs.mkdirSync(path.join(config.paths.root, 'tmp'), { recursive: true })
   if (config.packs.vanxone) {
     try {
       const { loadVanxone } = await import('./compat/vanxone.js')

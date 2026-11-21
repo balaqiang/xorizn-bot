@@ -1,13 +1,13 @@
-import { setAfk } from '../../src/features/afk.js'
-import { userPart } from '../../src/core/jid.js'
+const { setAfk } = require('../../lib/guard')
 
-export default {
+module.exports = {
+  name: 'afk',
   command: ['afk'],
   category: 'tools',
-  description: 'Tandai dirimu sedang AFK; yang men-tag kamu akan diberi tahu',
+  desc: 'Tandai dirimu sedang AFK',
   usage: '[alasan]',
-  async run(m, { text }) {
-    setAfk(m.sender, text)
-    return m.reply(`💤 @${userPart(m.sender)} sekarang AFK${text ? `: _${text}_` : ''}.`)
+  run: async ({ sender, text, reply }) => {
+    setAfk(sender, text.slice(0, 100))
+    await reply(`💤 Kamu sekarang AFK${text ? `: ${text.slice(0, 100)}` : ''}\nOrang yang mention kamu akan diberi tahu. Kirim pesan apa saja untuk kembali.`)
   }
 }

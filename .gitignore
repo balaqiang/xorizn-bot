@@ -9,12 +9,17 @@ data/
 # konfigurasi lokal (berisi password dashboard & API key) — salin dari config/config.example.json
 config/config.json
 
-# berkas sensitif / sementara dari pack
-packs/vanxone/bin/cookies.txt
-packs/vanxone/database/plugin-backup/
-packs/vanxone/database/runtime-settings.json
-packs/*/tmp/*
-!packs/*/tmp/.gitkeep
+# file sementara & berkas sensitif fitur vanXone / Rubby
+tmp/
+bin/cookies.txt
+bin/yt-dlp*
+database/plugin-backup/
+database/runtime-settings.json
+plugins/.stage/
 
 # hasil graphify (dibangun ulang dengan `npm run graph`)
 graphify-out/
+
+# dashboard Next.js: sumber di dashboard/src, hasil build statis (dashboard/out) ikut di-commit
+dashboard/.next/
+dashboard/next-env.d.ts

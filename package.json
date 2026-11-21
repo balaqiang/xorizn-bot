@@ -14,7 +14,8 @@
     "dev": "node --watch-path=src --watch-path=plugins src/index.js",
     "check": "node src/index.js --no-connect",
     "reset-session": "node src/tools/reset-session.js",
-    "graph": "graphify update ."
+    "graph": "graphify update .",
+    "build:dashboard": "npm --prefix dashboard install && npm --prefix dashboard run build"
   },
   "keywords": [
     "whatsapp",

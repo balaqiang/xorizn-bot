@@ -1,6 +1,7 @@
 /**
  * Dashboard localhost: REST API + Server-Sent Events + SPA statis (src/dashboard/public).
  */
+import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
@@ -19,7 +20,8 @@ import { restart } from '../core/lifecycle.js'
 import { loadNativePlugins } from '../core/loader.js'
 
 const log = logger.child('dashboard')
-const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public')
+// Hasil build statis dashboard Next.js + TailAdmin (folder dashboard/). Build: npm run build:dashboard
+const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'dashboard', 'out')
 /** Sesi login dashboard disimpan di database supaya tetap login setelah restart. */
 const sessions = {
   col: () => bot.db.collection('_dashboard_sessions'),
@@ -145,7 +147,7 @@ export async function startDashboard() {
   const { host, port, password } = bot.config.dashboard
   const app = express()
   app.disable('x-powered-by')
-  app.use(express.json({ limit: '2mb' }))
+  app.use(express.json({ limit: '40mb' }))
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('X-Frame-Options', 'DENY')
@@ -184,7 +186,7 @@ export async function startDashboard() {
   app.use('/api', requireAuth)
 
   // ----- overview -----
-  app.get('/api/overview', (req, res) => {
+  app.get('/api/overview', asyncRoute(async (req, res) => {
     const usage = bot.db.get('stats', 'commands') || {}
     const top = Object.entries(usage).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }))
     const users = bot.db.collection('users')
@@ -219,9 +221,10 @@ export async function startDashboard() {
       },
       database: bot.db.stats(),
       dbError: bot.dbError || null,
-      cardEngine: cardEngine()
+      cardEngine: cardEngine(),
+      opencode: await (await import('../features/opencode.js')).status()
     })
-  })
+  }))
 
   // ----- realtime -----
   app.get('/api/events', (req, res) => {
@@ -396,7 +399,10 @@ export async function startDashboard() {
   }))
 
   // ----- bot settings -----
-  app.get('/api/settings', (req, res) => res.json({ settings: bot.settings, cardEngine: cardEngine() }))
+  app.get('/api/settings', (req, res) => {
+    const { opencode: _oc, ...settings } = bot.settings
+    res.json({ settings, cardEngine: cardEngine() })
+  })
   app.patch('/api/settings', (req, res) => {
     const patch = pick(req.body, SETTINGS_KEYS)
     if (patch.owners) patch.owners = [...new Set([].concat(patch.owners).map(digits).filter(Boolean))]
@@ -405,7 +411,8 @@ export async function startDashboard() {
     if (patch.mode && !['public', 'self', 'group', 'private'].includes(patch.mode)) return res.status(400).json({ error: 'mode tidak valid' })
     if (patch.cooldown !== undefined) patch.cooldown = Math.min(60, Math.max(0, Number(patch.cooldown) || 0))
     bot.saveSettings(patch)
-    res.json({ ok: true, settings: bot.settings })
+    const { opencode: _oc, ...settings } = bot.settings
+    res.json({ ok: true, settings })
   })
 
   // ----- commands -----
@@ -545,9 +552,124 @@ export async function startDashboard() {
     res.json({ ok: true, rows, restartRequired: true })
   }))
 
+  // ----- AI / OpenCode -----
+  const oc = await import('../features/opencode.js')
+  const { routerConfig, routerModels } = await import('../features/transcribe.js')
+  const { readMessageMedia, composePrompt } = await import('../features/media-reader.js')
+  const OC_KEYS = ['enabled', 'url', 'username', 'password', 'directory', 'defaultModel', 'defaultVariant', 'defaultAgent', 'access', 'permissionMode', 'timeoutSec']
+  const ocPublicConfig = () => {
+    const c = oc.ocConfig()
+    const r = routerConfig()
+    return { ...pick(c, OC_KEYS), password: c.password ? '••••••' : '', workspace: oc.workspaceDir(), router: { url: r.url, apiKey: maskKey(r.apiKey), audioModel: r.audioModel } }
+  }
+  const msgText = (x) => (x.type === 'user' ? x.text : (x.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(''))
+
+  app.get('/api/opencode', asyncRoute(async (req, res) => {
+    const status = await oc.status()
+    let models = []
+    let agents = []
+    let sessions = []
+    let defaultModel = null
+    if (status.ok) {
+      ;[models, agents, sessions, defaultModel] = await Promise.all([
+        oc.opencode.models().catch(() => []),
+        oc.opencode.agents().catch(() => []),
+        oc.opencode.sessions(30).catch(() => []),
+        oc.opencode.defaultModel().catch(() => null)
+      ])
+    }
+    let router = null
+    try {
+      const list = await routerModels()
+      router = { ok: true, models: list.length, audio: list.filter((m) => m.capabilities?.audioInput).map((m) => m.id) }
+    } catch (err) {
+      router = { ok: false, error: err.message }
+    }
+    res.json({
+      status,
+      config: ocPublicConfig(),
+      router,
+      defaultModel: defaultModel ? `${defaultModel.providerID}/${defaultModel.id}` : null,
+      models: models.filter((m) => !m.type || m.type === 'chat').map((m) => ({ key: `${m.providerID}/${m.id}`, providerID: m.providerID, id: m.id, name: m.name, input: m.capabilities?.input || [], variants: (m.variants || []).map((v) => v.id), enabled: m.enabled !== false, context: m.limit?.context })),
+      agents: agents.filter((a) => a.mode !== 'subagent' && !a.hidden).map((a) => ({ id: a.id, description: a.description || a.name })),
+      sessions: sessions.map((s) => ({ id: s.id, title: s.title, updated: s.time?.updated, model: s.model ? `${s.model.providerID}/${s.model.id}${s.model.variant && s.model.variant !== 'default' ? `#${s.model.variant}` : ''}` : '', fromBot: s.metadata?.source === 'bitch-bot', user: s.metadata?.user || '', cost: s.cost, tokens: s.tokens }))
+    })
+  }))
+  app.patch('/api/opencode/config', (req, res) => {
+    const b = req.body || {}
+    const cur = bot.settings.opencode || {}
+    const next = { ...cur, ...pick(b, OC_KEYS) }
+    if (typeof next.password === 'string' && next.password.includes('••')) next.password = cur.password || ''
+    if (next.timeoutSec !== undefined) next.timeoutSec = Math.min(1800, Math.max(30, Number(next.timeoutSec) || 300))
+    if (next.access && !['owner', 'premium', 'all'].includes(next.access)) return res.status(400).json({ error: 'akses tidak valid' })
+    if (next.permissionMode && !oc.PERMISSION_PRESETS[next.permissionMode]) return res.status(400).json({ error: 'mode izin tidak valid' })
+    if (b.router) {
+      const r = { ...(cur.router || {}), ...pick(b.router, ['url', 'apiKey', 'audioModel']) }
+      if (typeof r.apiKey === 'string' && r.apiKey.includes('••')) r.apiKey = cur.router?.apiKey || ''
+      next.router = r
+    }
+    bot.saveSettings({ opencode: next })
+    res.json({ ok: true, config: ocPublicConfig() })
+  })
+  app.post('/api/opencode/start', asyncRoute(async (req, res) => {
+    const out = await oc.startService()
+    log.info('opencode service start:', out.split('\n').pop())
+    res.json({ ok: true, output: out, status: await oc.status() })
+  }))
+  app.get('/api/opencode/sessions/:id/messages', asyncRoute(async (req, res) => {
+    const list = await oc.opencode.messages(req.params.id, 60)
+    res.json({ messages: list.filter((x) => x.type === 'user' || x.type === 'assistant').reverse().map((x) => ({ id: x.id, role: x.type, text: msgText(x), files: (x.files || []).map((f) => f.name), time: x.time?.created, error: x.error?.message })) })
+  }))
+  app.delete('/api/opencode/sessions/:id', asyncRoute(async (req, res) => {
+    await oc.opencode.deleteSession(req.params.id)
+    res.json({ ok: true })
+  }))
+  app.post('/api/opencode/chat', asyncRoute(async (req, res) => {
+    const { text = '', files = [], model, variant, sessionId, newSession } = req.body || {}
+    const who = { sender: 'dashboard@s.whatsapp.net', pushName: 'Dashboard', isOwner: true, isPremium: true }
+    const state = oc.userState(who.sender)
+    if (model) {
+      const p = oc.parseModel(model)
+      if (p) state.model = { providerID: p.providerID, id: p.id }
+    }
+    if (variant !== undefined) state.variant = variant || ''
+    if (sessionId) state.sessionId = sessionId
+    if (newSession) state.sessionId = ''
+    bot.db.save()
+    // lampiran dari browser → pakai pembaca media yang sama dengan WhatsApp
+    const media = { files: [], texts: [], notes: [] }
+    for (const f of [].concat(files).slice(0, 5)) {
+      const buffer = Buffer.from(String(f.data || ''), 'base64')
+      const mime = String(f.mime || 'application/octet-stream')
+      const type = mime.startsWith('image/') ? 'imageMessage' : mime.startsWith('audio/') ? 'audioMessage' : mime.startsWith('video/') ? 'videoMessage' : 'documentMessage'
+      const fake = { type, msg: { mimetype: mime, fileName: f.name, seconds: 30 }, download: async () => buffer, quoted: null }
+      const r = await readMessageMedia(fake)
+      media.files.push(...r.files)
+      media.texts.push(...r.texts)
+      media.notes.push(...r.notes)
+    }
+    const session = await oc.ensureSession(who)
+    const want = await oc.effectiveModel(state)
+    if (want && (oc.modelKey(session.model) !== oc.modelKey(want) || (session.model?.variant || '') !== (want.variant || ''))) await oc.opencode.switchModel(session.id, want).catch(() => {})
+    const result = await oc.runPrompt(session.id, { text: composePrompt(text, media), files: media.files }, {
+      onRetry: async (retry) => {
+        if (retry.attempt >= 2 || /rate|quota/i.test(retry.error?.type || '')) await oc.opencode.interrupt(session.id).catch(() => {})
+      }
+    })
+    res.json({ sessionId: session.id, text: result.text, error: result.error ? oc.friendlyError(result.error) : null, ms: result.ms, tokens: result.tokens, model: result.model, tools: result.tools, notes: media.notes })
+  }))
+
   // ----- static SPA -----
-  app.use(express.static(PUBLIC, { index: 'index.html', maxAge: 0 }))
-  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(PUBLIC, 'index.html')))
+  if (!fs.existsSync(path.join(PUBLIC, 'index.html'))) {
+    log.warn('dashboard belum di-build (dashboard/out kosong). Jalankan: npm run build:dashboard')
+    app.get(/^\/(?!api\/).*/, (req, res) =>
+      res.status(503).type('html').send('<h2 style="font-family:sans-serif">Dashboard belum di-build</h2><p style="font-family:sans-serif">Jalankan <code>npm run build:dashboard</code> lalu muat ulang halaman ini.</p>')
+    )
+  } else {
+    app.use('/_next', express.static(path.join(PUBLIC, '_next'), { maxAge: '365d', immutable: true }))
+    app.use(express.static(PUBLIC, { index: 'index.html', maxAge: 0, extensions: ['html'] }))
+    app.get(/^\/(?!api\/).*/, (req, res) => res.status(404).sendFile(path.join(PUBLIC, '404.html')))
+  }
 
   app.use((err, req, res, next) => {
     log.error(`${req.method} ${req.path}:`, err.message)

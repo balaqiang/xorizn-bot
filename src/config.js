@@ -67,8 +67,11 @@ export function loadConfig() {
     data: path.join(ROOT, 'data'),
     tmp: path.join(ROOT, 'data', 'tmp'),
     session: path.resolve(ROOT, config.bot.sessionDir),
-    plugins: path.join(ROOT, 'plugins'),
-    packs: path.join(ROOT, 'packs'),
+    plugins: path.join(ROOT, 'plugins', 'core'),
+    vanxonePlugins: path.join(ROOT, 'plugins'),
+    rubbyPlugins: path.join(ROOT, 'plugins', 'rubby'),
+    lib: path.join(ROOT, 'lib'),
+    media: path.join(ROOT, 'media'),
     assets: path.join(ROOT, 'assets')
   }
   for (const dir of [config.paths.data, config.paths.tmp]) fs.mkdirSync(dir, { recursive: true })

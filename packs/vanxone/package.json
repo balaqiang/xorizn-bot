@@ -1,6 +1,0 @@
-{
-  "name": "pack-vanxone",
-  "private": true,
-  "type": "commonjs",
-  "description": "Pack fitur vanXone v1.32 (CommonJS). Dijalankan oleh src/compat/vanxone.js — jangan dijalankan langsung."
-}

@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "index.js & settings.js = adaptor konfigurasi untuk kode vanXone; pengaturan utama ada di config.json."
+}

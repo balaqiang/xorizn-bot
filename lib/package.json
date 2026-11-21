@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "Library vanXone (CommonJS). lib/rubby berisi library Rubby (ESM)."
+}
