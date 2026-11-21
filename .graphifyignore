@@ -21,3 +21,5 @@ docs/
 src/engine/zenith/src/lib/zenith-import/xorizn-bot-legacy-engine.js
 dashboard/out/
 dashboard/.next/
+
+.verify/

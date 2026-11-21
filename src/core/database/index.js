@@ -159,8 +159,11 @@ export class Database {
 
   async flush() {
     if (this.flushing) {
+      // Penyimpanan yang sedang jalan memakai data lama: tunggu selesai, lalu simpan lagi supaya
+      // pemanggil (mis. close() saat shutdown) baru selesai setelah perubahan terbarunya tersimpan.
       this.pending = true
-      return this.flushing
+      await this.flushing.catch(() => {})
+      return this.flush()
     }
     const { upserts, deletes } = this.diff()
     if (!upserts.length && !deletes.length) return
