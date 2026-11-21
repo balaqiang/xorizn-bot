@@ -186,7 +186,7 @@ export function StatusPill({ connection }: { connection?: string }) {
 }
 
 export function SourceBadge({ source }: { source: string }) {
-  const color = source === "native" ? "primary" : source === "classic" ? "info" : source === "extra" ? "warning" : "gray";
+  const color = source === "native" ? "primary" : source === "classic" ? "info" : source === "extra" ? "warning" : source === "custom" ? "success" : "gray";
   return (
     <Badge color={color as "primary"} size="sm">
       {source}

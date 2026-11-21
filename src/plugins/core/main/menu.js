@@ -1,11 +1,12 @@
 import os from 'node:os'
 import { readMore, runtime, now, greeting, adReply } from '../../../utils/helpers.js'
 import { userPart } from '../../../core/jid.js'
+import { refreshLimit, dailyLimit, limitEnabled } from '../../../features/limit.js'
 
 const ICONS = {
   main: '🏠', info: 'ℹ️', group: '👥', owner: '👑', premium: '💎', tools: '🧰', sticker: '🎨', downloader: '📥',
   search: '🔎', ai: '🤖', 'ai-image': '🖼️', game: '🎮', fun: '🎉', rpg: '⚔️', maker: '✏️', islamic: '🕌', anime: '🌸',
-  audio: '🎧', convert: '🔄', stalker: '🕵️', nsfw: '🔞', image: '🖼️', store: '🛒', economy: '💰', other: '📦'
+  audio: '🎧', user: '👤', custom: '🧩', convert: '🔄', stalker: '🕵️', nsfw: '🔞', image: '🖼️', store: '🛒', economy: '💰', other: '📦'
 }
 const icon = (c) => ICONS[c] || '✨'
 
@@ -21,17 +22,19 @@ function header(m, ctx) {
     `│ 🔣 Prefix: ${settings.prefixes.join(' ')}`,
     `│ 🌐 Mode: ${settings.mode}`,
     `│ 📚 Total fitur: ${total}`,
-    `│ 👤 Status: ${ctx.isOwner ? 'Owner 👑' : ctx.isPremium ? 'Premium 💎' : 'Free'}`,
+    `│ 👤 Status: ${ctx.isOwner ? 'Owner 👑' : ctx.isPremium ? 'Premium 💎' : 'Free'}${ctx.user?.registered ? ' • terdaftar' : ''}`,
+    `│ 🎫 Limit: ${ctx.isOwner || ctx.isPremium || !limitEnabled() ? '∞' : `${refreshLimit(ctx.user)}/${dailyLimit()}`}`,
     `╰──────────────`
   ].join('\n')
 }
 
-const line = (p, e) => `│ ◦ ${p}${e.name}${e.usage ? ` _${e.usage}_` : ''}${e.flags?.premium ? ' 💎' : ''}${e.flags?.owner ? ' 👑' : ''}`
+const line = (p, e) => `│ ◦ ${p}${e.name}${e.usage ? ` _${e.usage}_` : ''}${e.flags?.limit ? ' 🎫' : ''}${e.flags?.premium ? ' 💎' : ''}${e.flags?.owner ? ' 👑' : ''}`
 
 export default [
   {
     command: ['menu', 'help', 'start', '?'],
     category: 'main',
+    noRegister: true,
     description: 'Daftar kategori fitur, atau isi satu kategori: .menu <kategori>',
     usage: '[kategori]',
     async run(m, ctx) {
@@ -52,6 +55,7 @@ export default [
         header(m, ctx),
         '',
         `Ketik *${p}menu <kategori>* untuk melihat isinya, atau *${p}allmenu* untuk semua fitur.`,
+        `🎫 = memakai limit • 💎 = premium • 👑 = owner`,
         '',
         `╭─❖ *KATEGORI*`,
         ...cats.map(([c, list]) => `│ ${icon(c)} ${c} — ${list.length} fitur`),
@@ -65,6 +69,7 @@ export default [
   {
     command: ['allmenu', 'menuall', 'semuamenu'],
     category: 'main',
+    noRegister: true,
     description: 'Tampilkan semua fitur',
     async run(m, ctx) {
       const { registry, prefix, settings } = ctx
@@ -81,6 +86,7 @@ export default [
   {
     command: ['info', 'botinfo', 'stats', 'status', 'runtime'],
     category: 'main',
+    noRegister: true,
     description: 'Informasi & statistik bot',
     async run(m, ctx) {
       const { bot, settings } = ctx
@@ -95,7 +101,7 @@ export default [
           `│ 💬 Pesan diproses: ${bot.runtime.messages}`,
           `│ ⚡ Perintah dijalankan: ${bot.runtime.commands}`,
           `│ 👥 Grup: ${groups} • 👤 Pengguna: ${users}`,
-          `│ 📚 Fitur aktif: ${bot.registry.active().length} (native ${counts.native || 0} • classic ${counts.classic || 0} • extra ${counts.extra || 0})`,
+          `│ 📚 Fitur aktif: ${bot.registry.active().length}${counts.classic || counts.extra ? ` (native ${counts.native || 0} • classic ${counts.classic || 0} • extra ${counts.extra || 0})` : ''}`,
           `│ 🗄️ Database: ${bot.db.driverName}`,
           `│ 🧠 RAM: ${(mem.rss / 1048576).toFixed(0)} MB / ${(os.totalmem() / 1073741824).toFixed(1)} GB`,
           `│ 🖥️ ${os.platform()} • Node ${process.version}`,
@@ -109,6 +115,7 @@ export default [
   {
     command: ['owner', 'creator', 'pemilik'],
     category: 'main',
+    noRegister: true,
     description: 'Kontak owner bot',
     async run(m, { settings }) {
       const owners = settings.owners || []
@@ -123,6 +130,7 @@ export default [
   {
     command: ['totalfitur', 'fitur', 'features'],
     category: 'main',
+    noRegister: true,
     description: 'Jumlah fitur per sumber',
     async run(m, { bot }) {
       const c = bot.registry.counts()

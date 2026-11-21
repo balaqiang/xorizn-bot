@@ -1,5 +1,5 @@
 /**
- * Database dokumen sederhana dengan 3 pilihan penyimpanan: JSON, SQLite, MySQL (XAMPP).
+ * Database dokumen sederhana dengan 4 pilihan penyimpanan: JSON, SQLite, MySQL (XAMPP), Postgres (termasuk Supabase).
  *
  * Semua data dimuat ke memori saat start (akses sinkron & cepat untuk bot), lalu perubahan
  * disimpan berkala ke driver yang dipilih. Struktur data: `data[collection][id] = value`.
@@ -10,7 +10,7 @@ import logger from '../logger.js'
 const log = logger.child('db')
 const KEY_SEP = '\u0000'
 
-export const DRIVERS = ['json', 'sqlite', 'mysql']
+export const DRIVERS = ['json', 'sqlite', 'mysql', 'postgres']
 
 export async function createDriver(name, options, root) {
   switch (name) {
@@ -25,6 +25,10 @@ export async function createDriver(name, options, root) {
     case 'mysql': {
       const { MysqlDriver } = await import('./drivers/mysql.js')
       return new MysqlDriver(options)
+    }
+    case 'postgres': {
+      const { PostgresDriver } = await import('./drivers/postgres.js')
+      return new PostgresDriver(options)
     }
     default:
       throw new Error(`Driver database tidak dikenal: "${name}". Pilihan: ${DRIVERS.join(', ')}`)

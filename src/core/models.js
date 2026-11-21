@@ -40,6 +40,20 @@ export function defaultSettings(config) {
     commandProviders: {},
     /** urutan prioritas bila nama perintah bentrok */
     providerOrder: ['native', 'classic', 'extra'],
+    /** wajib daftar (.daftar) sebelum memakai perintah (kecuali menu, daftar, owner, ping) */
+    requireRegister: false,
+    /** limit harian pengguna free untuk fitur berat (downloader, AI). Premium & owner bebas limit. */
+    limit: { enabled: true, daily: 20 },
+    /** AI chat (.ai): penyedia OpenAI-compatible (mis. 9router). API key kosong = memakai OpenCode. */
+    ai: { baseUrl: 'http://localhost:20128/v1', apiKey: '', model: '', systemPrompt: '', memory: 10 },
+    /** downloader bawaan (yt-dlp + cadangan) */
+    downloader: { maxMB: 100, maxMinutes: 30, autoInstall: true },
+    /** perintah kustom: host lokal/privat yang boleh dipanggil (mis. "localhost:5678" untuk n8n) */
+    builder: { allowHosts: [] },
+    /** webhook keluar (n8n, dll): [{ id, url, events: ['message','command','group'], secret, enabled }] */
+    webhooks: [],
+    /** API masuk untuk n8n / aplikasi lain: POST /api/v1/send dengan header Authorization: Bearer <token> */
+    api: { enabled: false, token: '' },
     /** respon otomatis global: [{ trigger, response, exact }] */
     autoResponses: [],
     /** stiker yang dipetakan ke perintah: { fileSha256(base64): "menu" } */
@@ -81,11 +95,15 @@ export const DEFAULT_USER = {
   premiumTime: 0,
   banned: false,
   banReason: '',
-  limit: 50,
+  limit: 20,
+  limitDay: '',
   exp: 0,
   level: 0,
   money: 0,
   registered: false,
+  regName: '',
+  regAge: 0,
+  regTime: 0,
   afk: -1,
   afkReason: '',
   commands: 0,

@@ -20,7 +20,9 @@ export default function SettingsPage() {
   useEffect(() => {
     if (data && !f) {
       const s = data.settings;
-      setF({ ...s, ownersText: s.owners.join(", "), prefixText: s.prefixes.join(" "), orderText: s.providerOrder.join(" > "), channelUrl: s.channel?.url || "", channelName: s.channel?.name || "" });
+      setF({ ...s, ownersText: s.owners.join(", "), prefixText: s.prefixes.join(" "), orderText: s.providerOrder.join(" > "), channelUrl: s.channel?.url || "", channelName: s.channel?.name || "",
+        limitDaily: s.limit?.daily ?? 20, dlMaxMB: s.downloader?.maxMB ?? 100, dlMaxMinutes: s.downloader?.maxMinutes ?? 30,
+        aiBaseUrl: s.ai?.baseUrl || "", aiApiKey: "", aiModel: s.ai?.model || "", aiMemory: s.ai?.memory ?? 10, aiSystem: s.ai?.systemPrompt || "" });
     }
   }, [data, f]);
 
@@ -95,6 +97,32 @@ export default function SettingsPage() {
               <FormField label="Prioritas sumber" help="Dipakai bila nama perintah bentrok."><Input className="font-mono" value={f.orderText} onChange={set("orderText")} /></FormField>
             </div>
             <Button className="mt-5" onClick={() => save({ prefixes: f.prefixText.split(/\s+/).filter(Boolean), mode: f.mode, cooldown: Number(f.cooldown), providerOrder: f.orderText.split(/[>\s,]+/).filter(Boolean) })}>Simpan</Button>
+          </Section>
+          <Section title="Pengguna, limit & downloader" description="Limit dipakai fitur berat (downloader, AI). Premium & owner bebas limit.">
+            <ToggleRow title="Wajib daftar" description="Pengguna harus .daftar nama.umur sebelum memakai bot (menu, daftar, ping, owner tetap bisa)" checked={!!s.requireRegister} onChange={(v) => save({ requireRegister: v })} />
+            <ToggleRow title="Sistem limit harian" description="Matikan agar semua pengguna bebas limit" checked={s.limit?.enabled !== false} onChange={(v) => save({ limit: { ...s.limit, enabled: v } })} />
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <FormField label="Limit harian (free)"><Input type="number" min={1} max={10000} value={f.limitDaily} onChange={set("limitDaily")} /></FormField>
+              <FormField label="Maks ukuran unduhan (MB)"><Input type="number" min={5} max={2000} value={f.dlMaxMB} onChange={set("dlMaxMB")} /></FormField>
+              <FormField label="Maks durasi video (menit)"><Input type="number" min={1} max={600} value={f.dlMaxMinutes} onChange={set("dlMaxMinutes")} /></FormField>
+            </div>
+            <ToggleRow title="Pasang yt-dlp otomatis" description="Unduh yt-dlp dari GitHub resmi saat downloader pertama kali dipakai" checked={s.downloader?.autoInstall !== false} onChange={(v) => save({ downloader: { ...s.downloader, autoInstall: v } })} />
+            <Button className="mt-5" onClick={() => save({ limit: { ...s.limit, daily: Number(f.limitDaily) }, downloader: { ...s.downloader, maxMB: Number(f.dlMaxMB), maxMinutes: Number(f.dlMaxMinutes) } })}>Simpan</Button>
+          </Section>
+          <Section title="AI chat (.ai)" description="Penyedia OpenAI-compatible: 9router, OpenRouter, Groq, Ollama, dll. API key kosong = .ai memakai OpenCode.">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Base URL" className="sm:col-span-2"><Input className="font-mono" value={f.aiBaseUrl} placeholder="http://localhost:20128/v1" onChange={set("aiBaseUrl")} /></FormField>
+              <FormField label="API key" help={s.ai?.apiKeySet ? "Tersimpan. Kosongkan untuk tetap memakai key lama." : "Belum diisi."}>
+                <Input type="password" autoComplete="off" value={f.aiApiKey} placeholder={s.ai?.apiKeySet ? "••••••••" : "sk-..."} onChange={set("aiApiKey")} />
+              </FormField>
+              <FormField label="Model" help="Kosong = model pertama dari penyedia"><Input className="font-mono" value={f.aiModel} placeholder="mis. gemini/gemini-3.5-flash-lite" onChange={set("aiModel")} /></FormField>
+              <FormField label="Ingatan percakapan" help="Jumlah tanya-jawab yang diingat (0-30)"><Input type="number" min={0} max={30} value={f.aiMemory} onChange={set("aiMemory")} /></FormField>
+              <FormField label="System prompt" className="sm:col-span-2" help="Kosong = prompt bawaan (asisten ramah, berbahasa Indonesia)"><Textarea rows={3} value={f.aiSystem} onChange={set("aiSystem")} /></FormField>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button onClick={() => save({ ai: { baseUrl: f.aiBaseUrl.trim(), model: f.aiModel.trim(), memory: Number(f.aiMemory), systemPrompt: f.aiSystem, ...(f.aiApiKey ? { apiKey: f.aiApiKey.trim() } : {}) } }).then(() => setF((x: any) => ({ ...x, aiApiKey: "" })))}>Simpan</Button>
+              {s.ai?.apiKeySet && <Button variant="outline" onClick={() => save({ ai: { apiKey: "" } })}>Hapus API key</Button>}
+            </div>
           </Section>
         </div>
         <div className="space-y-4 md:space-y-6">

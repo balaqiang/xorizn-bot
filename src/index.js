@@ -59,6 +59,15 @@ async function main() {
   bot.nativeHooks = native.hooks
   log.success(`${native.entries.length} perintah native dimuat${native.failed.length ? ` (${native.failed.length} gagal)` : ''}`)
 
+  // ---------- Perintah kustom (dibuat dari dashboard) ----------
+  try {
+    const { registerAll } = await import('./features/builder/index.js')
+    const n = registerAll()
+    if (n) log.success(`${n} perintah kustom dimuat`)
+  } catch (err) {
+    log.error('perintah kustom gagal dimuat:', err)
+  }
+
   // ---------- Fitur classic & extra ----------
   // Banyak file plugin classic/extra memakai path relatif terhadap direktori kerja ('./database/...',
   // './engine/...', './tmp', './package.json'), jadi direktori kerja bot selalu folder src/.

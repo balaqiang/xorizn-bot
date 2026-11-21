@@ -10,6 +10,8 @@ export const messages: Record<string, unknown> = {
       users: "Pengguna",
       ai: "AI / OpenCode",
       settings: "Pengaturan Bot",
+      custom: "Perintah Kustom",
+      integrations: "Integrasi (n8n)",
       system: "Sistem & Database",
       logs: "Log",
     },

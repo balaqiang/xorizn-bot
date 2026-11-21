@@ -12,7 +12,7 @@ import { fmtNum } from "@/lib/format";
 import { cn } from "@/utils";
 import { useEffect, useState } from "react";
 
-const DRIVER_LABEL: Record<string, string> = { json: "JSON file", sqlite: "SQLite", mysql: "MySQL / XAMPP" };
+const DRIVER_LABEL: Record<string, string> = { json: "JSON file", sqlite: "SQLite", mysql: "MySQL / XAMPP", postgres: "Postgres / Supabase" };
 
 export default function SystemPage() {
   const { data: c, reload } = useApi<any>("/api/config");
@@ -28,7 +28,7 @@ export default function SystemPage() {
   useEffect(() => {
     if (!c) return;
     setDriver(c.database.driver);
-    setDb({ json: { ...c.database.json }, sqlite: { ...c.database.sqlite }, mysql: { ...c.database.mysql } });
+    setDb({ json: { ...c.database.json }, sqlite: { ...c.database.sqlite }, mysql: { ...c.database.mysql }, postgres: { ssl: "auto", ...(c.database.postgres || {}) } });
     setDash({ host: c.dashboard.host, port: c.dashboard.port, password: "" });
     setLogin({ ...c.bot });
     setPacks({ ...c.packs });
@@ -99,7 +99,27 @@ export default function SystemPage() {
                 </button>
               ))}
             </div>
-            {driver === "mysql" ? (
+            {driver === "postgres" ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  label="Connection string (Supabase / Postgres)"
+                  help="Supabase: Project Settings → Database → Connection string → URI (Session pooler). Kosongkan bila memakai host/user di bawah."
+                  className="sm:col-span-2"
+                >
+                  <Input className="font-mono text-xs" value={opts.connectionString || ""} placeholder="postgresql://postgres.xxxx:PASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres" onChange={setOpt("connectionString")} />
+                </FormField>
+                <FormField label="Host"><Input value={opts.host || ""} onChange={setOpt("host")} /></FormField>
+                <FormField label="Port"><Input type="number" value={opts.port || ""} onChange={setOpt("port")} /></FormField>
+                <FormField label="User"><Input value={opts.user || ""} onChange={setOpt("user")} /></FormField>
+                <FormField label="Password"><Input type="password" value={opts.password || ""} onChange={setOpt("password")} /></FormField>
+                <FormField label="Nama database"><Input value={opts.database || ""} onChange={setOpt("database")} /></FormField>
+                <FormField label="SSL" help="auto = aktif untuk server di luar komputer ini (wajib untuk Supabase)">
+                  <NativeSelect value={opts.ssl ?? "auto"} onChange={(e) => setDb({ ...db, postgres: { ...opts, ssl: e.target.value } })}>
+                    <option value="auto">auto</option><option value="on">selalu</option><option value="off">mati</option>
+                  </NativeSelect>
+                </FormField>
+              </div>
+            ) : driver === "mysql" ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField label="Host"><Input value={opts.host || ""} onChange={setOpt("host")} /></FormField>
                 <FormField label="Port"><Input type="number" value={opts.port || ""} onChange={setOpt("port")} /></FormField>

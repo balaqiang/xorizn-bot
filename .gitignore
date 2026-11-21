@@ -24,3 +24,5 @@ graphify-out/
 # dashboard Next.js: sumber di dashboard/src, hasil build statis (dashboard/out) ikut di-commit
 dashboard/.next/
 dashboard/next-env.d.ts
+# cache emoji stiker brat (diunduh otomatis saat dipakai)
+src/media/brat/emoji-cache/

@@ -8,6 +8,8 @@
  *     usage: '@user',
  *     group: true, admin: true, botAdmin: true,   // juga: owner, premium, private, nsfw, hidden
  *     cooldown: 3,                    // detik (opsional)
+ *     limit: 1,                       // biaya limit harian (pengguna free); panggil ctx.spendLimit() saat berhasil
+ *     noRegister: true,               // boleh dipakai walau belum .daftar (saat wajib daftar aktif)
  *     async run(m, ctx) { ... },      // ctx: { sock, bot, args, text, command, prefix, group, isAdmin, ... }
  *     async before(m, ctx) { ... }    // opsional: dipanggil untuk SETIAP pesan, return true = hentikan
  *   }
@@ -63,7 +65,9 @@ export async function loadNativePlugins(dir) {
             private: !!p.private,
             admin: !!p.admin,
             botAdmin: !!p.botAdmin,
-            nsfw: !!p.nsfw
+            nsfw: !!p.nsfw,
+            limit: Math.max(0, Number(p.limit) || 0),
+            noRegister: !!p.noRegister
           },
           plugin: p,
           exec: (m, ctx) => p.run(m, ctx)

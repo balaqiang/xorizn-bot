@@ -18,6 +18,10 @@ import { renderCard, engine as cardEngine } from '../features/welcome-card.js'
 import { participantPn, userPart, digits, toPnJid } from '../core/jid.js'
 import { restart } from '../core/lifecycle.js'
 import { loadNativePlugins } from '../core/loader.js'
+import * as builder from '../features/builder/index.js'
+import { LIMITS, STEP_TYPES } from '../features/builder/runner.js'
+import { listSecrets, setSecret, deleteSecret } from '../features/builder/secrets.js'
+import * as integ from '../features/integrations.js'
 
 const log = logger.child('dashboard')
 // Hasil build statis dashboard Next.js + TailAdmin (folder dashboard/). Build: npm run build:dashboard
@@ -84,6 +88,20 @@ function maskKey(v) {
   return s.length <= 6 ? '••••' : `${s.slice(0, 3)}••••${s.slice(-3)}`
 }
 
+/** postgresql://user:rahasia@host/db → postgresql://user:••••••@host/db */
+function maskConnString(v) {
+  if (!v) return ''
+  // dipotong manual (bukan URL) supaya "••" tetap utuh dan bisa dikenali saat disimpan ulang;
+  // sampai '@' TERAKHIR agar password yang memuat '@' tidak ikut bocor
+  const s = String(v)
+  const i = s.indexOf('://')
+  const at = s.lastIndexOf('@')
+  if (i < 0 || at <= i) return s
+  const userinfo = s.slice(i + 3, at)
+  const user = userinfo.split(':')[0]
+  return `${s.slice(0, i + 3)}${user}${userinfo.includes(':') ? ':••••••' : ''}${s.slice(at)}`
+}
+
 function dailySeries(days = 14) {
   const daily = bot.db.get('stats', 'daily') || {}
   const out = []
@@ -139,8 +157,19 @@ const SETTINGS_KEYS = [
   'botName', 'ownerName', 'owners', 'prefixes', 'noPrefix', 'mode', 'autoRead', 'autoTyping', 'alwaysOnline', 'antiCall',
   'antiCallMessage', 'cooldown', 'packname', 'author', 'footer', 'thumbnail', 'timezone', 'welcomeText', 'goodbyeText',
   'welcomeBackground', 'welcomeColor', 'goodbyeColor', 'providerOrder', 'autoResponses', 'commandProviders', 'disabledCommands',
-  'website', 'channel'
+  'website', 'channel', 'requireRegister', 'limit', 'ai', 'downloader'
 ]
+
+/** Pengaturan untuk dikirim ke browser: tanpa rahasia (API key AI hanya ditandai tersimpan/tidak). */
+function publicSettings() {
+  const { opencode: _oc, ai, ...settings } = bot.settings
+  const { apiKey, ...aiRest } = ai || {}
+  return { ...settings, ai: { ...aiRest, apiKeySet: !!apiKey } }
+}
+const clampNum = (v, min, max, def) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : def
+}
 const GROUP_KEYS = Object.keys(DEFAULT_GROUP).filter((k) => !['stats', 'joinedAt', 'name'].includes(k))
 
 // ---------- app ----------
@@ -183,6 +212,28 @@ export async function startDashboard() {
     res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
     res.json({ ok: true })
   })
+
+  // ----- API v1 untuk n8n / aplikasi lain (token, bukan sesi dashboard) -----
+  app.use('/api/v1', (req, res, next) => {
+    const check = integ.checkToken(req)
+    if (!check.ok) return res.status(check.code).json({ ok: false, error: check.error })
+    next()
+  })
+  app.get('/api/v1/status', (req, res) => {
+    res.json({ ok: true, connection: bot.status.connection, me: bot.status.me || null, uptime: Date.now() - bot.startedAt, bot: bot.settings.botName })
+  })
+  app.get('/api/v1/groups', (req, res) => {
+    res.json({ ok: true, groups: bot.groupCache.list().map((g) => ({ id: g.id, name: g.subject, size: g.participants?.length || g.size || 0 })) })
+  })
+  app.post('/api/v1/send', asyncRoute(async (req, res) => {
+    if (!bot.sock || bot.status.connection !== 'open') return res.status(503).json({ ok: false, error: 'Bot belum tersambung ke WhatsApp.' })
+    const jid = integ.toJid(req.body?.to)
+    if (!jid) return res.status(400).json({ ok: false, error: 'Field "to" harus nomor (628xxx), JID pengguna, atau JID grup.' })
+    const content = integ.contentFromBody(req.body || {})
+    if (!content) return res.status(400).json({ ok: false, error: 'Isi salah satu: text, image, video, audio, document, sticker.' })
+    const sent = await bot.sock.sendMessage(jid, content)
+    res.json({ ok: true, to: jid, id: sent?.key?.id || null })
+  }))
 
   app.use('/api', requireAuth)
 
@@ -401,8 +452,7 @@ export async function startDashboard() {
 
   // ----- bot settings -----
   app.get('/api/settings', (req, res) => {
-    const { opencode: _oc, ...settings } = bot.settings
-    res.json({ settings, cardEngine: cardEngine() })
+    res.json({ settings: publicSettings(), cardEngine: cardEngine() })
   })
   app.patch('/api/settings', (req, res) => {
     const patch = pick(req.body, SETTINGS_KEYS)
@@ -419,10 +469,146 @@ export async function startDashboard() {
       // link berubah → JID lama tidak berlaku, diambil ulang saat bot tersambung
       patch.channel = url === cur.url ? { ...cur, name } : { url, name, jid: '' }
     }
+    if (patch.requireRegister !== undefined) patch.requireRegister = !!patch.requireRegister
+    if (patch.limit !== undefined) {
+      const cur = bot.settings.limit || {}
+      patch.limit = { enabled: patch.limit?.enabled ?? cur.enabled ?? true, daily: clampNum(patch.limit?.daily ?? cur.daily, 1, 10000, 20) }
+    }
+    if (patch.downloader !== undefined) {
+      const cur = bot.settings.downloader || {}
+      const d = patch.downloader || {}
+      patch.downloader = { maxMB: clampNum(d.maxMB ?? cur.maxMB, 5, 2000, 100), maxMinutes: clampNum(d.maxMinutes ?? cur.maxMinutes, 1, 600, 30), autoInstall: d.autoInstall ?? cur.autoInstall ?? true }
+    }
+    if (patch.ai !== undefined) {
+      const cur = bot.settings.ai || {}
+      const a = patch.ai || {}
+      const baseUrl = String(a.baseUrl ?? cur.baseUrl ?? '').trim()
+      if (baseUrl && !/^https?:\/\/\S+$/i.test(baseUrl)) return res.status(400).json({ error: 'Base URL AI harus diawali http:// atau https://' })
+      patch.ai = {
+        baseUrl,
+        // API key hanya berubah bila dikirim (string kosong = hapus)
+        apiKey: a.apiKey !== undefined ? String(a.apiKey).trim() : cur.apiKey || '',
+        model: String(a.model ?? cur.model ?? '').trim(),
+        systemPrompt: String(a.systemPrompt ?? cur.systemPrompt ?? '').slice(0, 4000),
+        memory: clampNum(a.memory ?? cur.memory, 0, 30, 10)
+      }
+    }
     bot.saveSettings(patch)
     if (patch.channel && !patch.channel.jid && bot.sock && bot.status?.connection === 'open') resolveChannel(bot.sock).catch(() => {})
-    const { opencode: _oc, ...settings } = bot.settings
-    res.json({ ok: true, settings })
+    res.json({ ok: true, settings: publicSettings() })
+  })
+
+  // ----- perintah kustom (no-code) -----
+  const builderError = (res, err) => res.status(400).json({ error: err?.message || String(err) })
+  app.get('/api/custom', (req, res) => {
+    res.json({ commands: builder.list(), secrets: listSecrets(), allowHosts: bot.settings.builder?.allowHosts || [], limits: LIMITS, stepTypes: STEP_TYPES })
+  })
+  app.post('/api/custom', (req, res) => {
+    try {
+      const doc = builder.save(req.body?.command, { override: !!req.body?.override, previousName: req.body?.previousName || null })
+      res.json({ ok: true, command: doc })
+    } catch (err) {
+      builderError(res, err)
+    }
+  })
+  app.post('/api/custom/test', asyncRoute(async (req, res) => {
+    try {
+      const out = await builder.test(req.body?.command, { text: String(req.body?.text || ''), isGroup: !!req.body?.isGroup })
+      res.json(out)
+    } catch (err) {
+      builderError(res, err)
+    }
+  }))
+  app.patch('/api/custom/:name', (req, res) => {
+    const doc = builder.setEnabled(req.params.name, !!req.body?.enabled)
+    if (!doc) return res.status(404).json({ error: 'Perintah tidak ditemukan' })
+    res.json({ ok: true, command: doc })
+  })
+  app.delete('/api/custom/:name', (req, res) => {
+    if (!builder.remove(req.params.name)) return res.status(404).json({ error: 'Perintah tidak ditemukan' })
+    res.json({ ok: true })
+  })
+  app.put('/api/secrets/:name', (req, res) => {
+    try {
+      setSecret(String(req.params.name || ''), req.body?.value)
+      res.json({ ok: true, secrets: listSecrets() })
+    } catch (err) {
+      builderError(res, err)
+    }
+  })
+  app.delete('/api/secrets/:name', (req, res) => {
+    deleteSecret(String(req.params.name || ''))
+    res.json({ ok: true, secrets: listSecrets() })
+  })
+  app.patch('/api/builder', (req, res) => {
+    const hosts = [...new Set([].concat(req.body?.allowHosts || []).map((h) => String(h).trim().toLowerCase()).filter(Boolean))]
+    const bad = hosts.find((h) => !/^[a-z0-9.\-[\]:]+$/.test(h) || h.length > 100)
+    if (bad) return res.status(400).json({ error: `Host tidak valid: ${bad}` })
+    if (hosts.length > 30) return res.status(400).json({ error: 'Maksimal 30 host.' })
+    bot.saveSettings({ builder: { ...(bot.settings.builder || {}), allowHosts: hosts } })
+    res.json({ ok: true, allowHosts: hosts })
+  })
+
+  // ----- integrasi (webhook n8n & API masuk) -----
+  const publicIntegrations = () => ({
+    webhooks: (bot.settings.webhooks || []).map(({ secret, ...w }) => ({ ...w, secretSet: !!secret })),
+    status: integ.webhookStatus(),
+    events: integ.EVENTS,
+    api: { enabled: !!bot.settings.api?.enabled, tokenSet: !!bot.settings.api?.token, tokenHint: bot.settings.api?.token ? `${bot.settings.api.token.slice(0, 6)}…${bot.settings.api.token.slice(-4)}` : '' }
+  })
+  app.get('/api/integrations', (req, res) => res.json(publicIntegrations()))
+  app.put('/api/integrations/webhooks', (req, res) => {
+    const cur = bot.settings.webhooks || []
+    const list = [].concat(req.body?.webhooks || [])
+    if (list.length > 10) return res.status(400).json({ error: 'Maksimal 10 webhook.' })
+    const out = []
+    for (const w of list) {
+      const url = String(w?.url || '').trim()
+      if (!/^https?:\/\/\S+$/i.test(url)) return res.status(400).json({ error: `URL webhook tidak valid: ${url || '(kosong)'}` })
+      const events = [].concat(w.events || []).filter((e) => integ.EVENTS.includes(e))
+      if (!events.length) return res.status(400).json({ error: 'Pilih minimal satu event untuk tiap webhook.' })
+      const old = cur.find((x) => x.id === w.id)
+      out.push({
+        id: old?.id || w.id || crypto.randomBytes(6).toString('hex'),
+        url,
+        events,
+        enabled: w.enabled !== false,
+        reply: !!w.reply,
+        timeout: Math.min(30, Math.max(2, Number(w.timeout) || 10)),
+        // secret hanya berubah bila dikirim (string kosong = biarkan; null = hapus)
+        secret: w.secret === null ? '' : w.secret ? String(w.secret).slice(0, 200) : old?.secret || crypto.randomBytes(16).toString('hex')
+      })
+    }
+    bot.saveSettings({ webhooks: out })
+    res.json(publicIntegrations())
+  })
+  app.post('/api/integrations/webhooks/:id/secret', (req, res) => {
+    const w = (bot.settings.webhooks || []).find((x) => x.id === req.params.id)
+    if (!w) return res.status(404).json({ error: 'Webhook tidak ditemukan' })
+    res.json({ secret: w.secret || '' })
+  })
+  app.post('/api/integrations/webhooks/:id/test', asyncRoute(async (req, res) => {
+    const w = (bot.settings.webhooks || []).find((x) => x.id === req.params.id)
+    if (!w) return res.status(404).json({ error: 'Webhook tidak ditemukan' })
+    const body = JSON.stringify({ event: 'test', bot: { name: bot.settings.botName }, at: Date.now(), data: { text: 'Tes webhook dari dashboard xorizn-bot' } })
+    try {
+      const r = await fetch(w.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-xorizn-event': 'test', 'x-xorizn-signature': integ.sign(w.secret, body) }, body, signal: AbortSignal.timeout(10000) })
+      res.json({ ok: r.ok, status: r.status, body: (await r.text()).slice(0, 500) })
+    } catch (err) {
+      res.json({ ok: false, error: err?.cause?.code || err?.message })
+    }
+  }))
+  app.patch('/api/integrations/api', (req, res) => {
+    const cur = bot.settings.api || {}
+    const next = { enabled: req.body?.enabled ?? cur.enabled ?? false, token: cur.token || '' }
+    let token = null
+    if (req.body?.regenerate || (next.enabled && !next.token)) {
+      next.token = integ.newToken()
+      token = next.token
+    }
+    bot.saveSettings({ api: next })
+    // token lengkap hanya ditampilkan sekali, saat dibuat
+    res.json({ ...publicIntegrations(), token })
   })
 
   // ----- commands -----
@@ -509,7 +695,14 @@ export async function startDashboard() {
   app.get('/api/config', (req, res) => {
     const c = bot.config
     res.json({
-      database: { driver: c.database.driver, active: bot.db.driverName, json: c.database.json, sqlite: c.database.sqlite, mysql: { ...c.database.mysql, password: c.database.mysql.password ? '••••••' : '' } },
+      database: {
+        driver: c.database.driver,
+        active: bot.db.driverName,
+        json: c.database.json,
+        sqlite: c.database.sqlite,
+        mysql: { ...c.database.mysql, password: c.database.mysql?.password ? '••••••' : '' },
+        postgres: { ...(c.database.postgres || {}), password: c.database.postgres?.password ? '••••••' : '', connectionString: maskConnString(c.database.postgres?.connectionString) }
+      },
       dashboard: { host: c.dashboard.host, port: c.dashboard.port },
       bot: { loginMethod: c.bot.loginMethod, pairingNumber: c.bot.pairingNumber, sessionDir: c.bot.sessionDir },
       packs: c.packs,
@@ -536,6 +729,11 @@ export async function startDashboard() {
     const base = bot.config.database[driver] || {}
     const opts = { ...base, ...(body || {}) }
     if (driver === 'mysql' && (!opts.password || String(opts.password).includes('••'))) opts.password = base.password
+    if (driver === 'postgres') {
+      if (!opts.password || String(opts.password).includes('••')) opts.password = base.password || ''
+      // connection string yang disamarkan (password ••) → pakai yang tersimpan
+      if (String(opts.connectionString || '').includes('••')) opts.connectionString = base.connectionString || ''
+    }
     return opts
   }
   app.post('/api/database/test', asyncRoute(async (req, res) => {

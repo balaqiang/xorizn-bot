@@ -12,6 +12,8 @@ import { moderate } from '../features/moderation.js'
 import { handleAfk } from '../features/afk.js'
 import { autoRespond } from '../features/autoresponder.js'
 import { autoSticker } from '../features/sticker.js'
+import { refreshLimit, spend, limitEnabled } from '../features/limit.js'
+import { emit as emitWebhook, messagePayload } from '../features/integrations.js'
 
 const log = logger.child('handler')
 const seen = new Set()
@@ -26,7 +28,9 @@ export const MESSAGES = {
   botAdmin: '🤖 Jadikan bot sebagai *admin grup* dulu.',
   nsfw: '🔞 Fitur NSFW belum diaktifkan di grup ini. Admin bisa mengaktifkannya lewat dashboard atau *.nsfw on*.',
   disabled: '⛔ Perintah ini sedang dinonaktifkan.',
-  error: '❌ Terjadi kesalahan saat menjalankan perintah ini.'
+  error: '❌ Terjadi kesalahan saat menjalankan perintah ini.',
+  register: (p) => `📝 Kamu belum terdaftar.\nDaftar dulu dengan *${p}daftar nama.umur*\nContoh: *${p}daftar Budi.17*`,
+  limit: (p, need, left) => `⚠️ Limit harian kamu habis (butuh ${need}, sisa ${left}).\nLimit terisi ulang setiap hari. Pengguna *Premium* bebas limit — cek *${p}limit*.`
 }
 
 /** Info admin grup untuk pesan ini (memakai cache metadata). */
@@ -139,6 +143,7 @@ async function processMessage(sock, raw) {
   bump('daily', new Date().toISOString().slice(0, 10))
 
   if (settings.autoRead) sock.readMessages([m.key]).catch(() => {})
+  if (!m.fromMe) emitWebhook('message', messagePayload(m), { chat: m.chat })
 
   // Stiker yang dipetakan ke perintah (.setcmd)
   if (m.type === 'stickerMessage' && m.msg?.fileSha256) {
@@ -218,6 +223,16 @@ async function processMessage(sock, raw) {
     return m.reply(MESSAGES.group)
   }
 
+  // Wajib daftar (opsional, diatur owner/dashboard)
+  const usedPrefix = parsed.prefix || settings.prefixes?.[0] || '.'
+  if (settings.requireRegister && !owner && !user.registered && !flags.noRegister) return m.reply(MESSAGES.register(usedPrefix))
+
+  // Limit harian untuk fitur berat (premium & owner bebas)
+  const premium = isPremium(m.sender)
+  const cost = !owner && !premium && limitEnabled() ? Number(flags.limit || 0) : 0
+  if (cost && refreshLimit(user) < cost) return m.reply(MESSAGES.limit(usedPrefix, cost, user.limit))
+  let charged = false
+
   // Jeda antar-perintah per pengguna (anti spam)
   if (!owner) {
     const wait = Number(entry.cooldown ?? settings.cooldown ?? 0) * 1000
@@ -241,7 +256,12 @@ async function processMessage(sock, raw) {
     participants: gc.participants,
     isAdmin: gc.isAdmin || owner,
     isBotAdmin: gc.isBotAdmin,
-    isPremium: isPremium(m.sender),
+    isPremium: premium,
+    limitCost: cost,
+    /** dipanggil plugin saat hasil berhasil dikirim → limit dipotong (hanya pengguna free) */
+    spendLimit: () => {
+      charged = true
+    },
     reply: (t, o) => m.reply(t, o),
     react: (e) => m.react(e)
   }
@@ -259,6 +279,9 @@ async function processMessage(sock, raw) {
   } finally {
     if (settings.autoTyping) sock.sendPresenceUpdate('paused', m.chat).catch(() => {})
   }
+
+  if (ok && charged && cost) spend(user, cost)
+  emitWebhook('command', messagePayload(m, { command: entry.name, source: entry.source, args: parsed.args, ok }))
 
   const ms = Date.now() - started
   bot.runtime.commands++

@@ -4,7 +4,7 @@
 # XORIZN-BOT
 
 Bot WhatsApp multi-device berbasis **Baileys v7** dengan **dashboard web localhost**,
-±2.400 perintah siap pakai, **AI OpenCode lewat 9router**, dan pilihan database **JSON / SQLite / MySQL (XAMPP)**.
+±130 fitur bawaan yang rapi (grup, owner, stiker, audio, downloader, AI, daftar/limit/premium), **AI lewat 9router / OpenCode**, dan pilihan database **JSON / SQLite / MySQL (XAMPP)**.
 
 📢 Channel: https://whatsapp.com/channel/0029VbEAM5cGJP8FzJH1JH0R
 
@@ -18,9 +18,17 @@ Bot WhatsApp multi-device berbasis **Baileys v7** dengan **dashboard web localho
 - **Dashboard TailAdmin (Next.js)** di `http://127.0.0.1:3000`: status & koneksi (minta kode pairing / scan QR dari browser), daftar grup yang diikuti bot, pengaturan per grup, modul & perintah (aktif/nonaktif, pilih sumber saat nama bentrok), pengguna (premium/ban/owner), AI / OpenCode (playground chat + lampiran), pengaturan bot, database, dan log realtime. Mode terang & gelap.
 - **AI OpenCode lewat 9router** — perintah `.oc` dkk. menghubungkan WhatsApp ke OpenCode di komputer ini. AI bisa membaca **gambar, stiker, video, PDF, DOCX, XLSX, PPTX, file kode**, dan **voice note/audio** (ditranskripsi lewat 9router).
 - **Welcome & goodbye bergambar** memakai [`discord-canvas`](https://www.npmjs.com/package/discord-canvas) — teks, warna, dan latar bisa diatur per grup, lengkap dengan pratinjau di dashboard.
-- **Database pilihan**: `json` (satu file), `sqlite` (bawaan Node, tanpa instalasi), `mysql` (XAMPP/MariaDB). Data bisa dipindah antar-driver dari dashboard.
+- **Database pilihan**: `json` (satu file), `sqlite` (bawaan Node, tanpa instalasi), `mysql` (XAMPP/MariaDB), `postgres` (Postgres / **Supabase**). Data bisa dipindah antar-driver dari dashboard.
 - **Fitur grup native**: anti-link (hapus/peringatan/kick), anti kata kasar, peringatan, bot on/off per grup, mode hanya-admin, NSFW per grup, auto-stiker, auto-respon, notifikasi promote/demote, hidetag/tagall, kick/add/promote/demote, buka/tutup grup, dll.
-- **±2.400 perintah**: 82 plugin native, 2.257 plugin *classic* (CommonJS, 7 engine), dan 268 plugin *extra* (ESM).
+- **Stiker**: gambar/video/gif → stiker (`.s`), teks → stiker gaya brat (`.brat`, `.bratvid` animasi), stiker → gambar/video (`.toimg`), ganti pack (`.take`).
+- **Audio**: video → MP3 (`.tomp3`), → voice note (`.tovn`), efek suara (`.bass`, `.nightcore`, `.slowed`, `.reverb`, `.8d`, `.robot`, `.tupai`, `.deep`, `.karaoke`, `.pitch`, `.tempo`, `.volume`, `.potongaudio`, dll.). Semua memakai ffmpeg bawaan, tanpa instal ffmpeg.
+- **TTS & terjemahan**: `.tts [bahasa] teks` (voice note), `.tr [bahasa] teks` — tanpa API key.
+- **Downloader bawaan**: `.play`, `.yts`, `.ytmp3`, `.ytmp4`, `.tiktok` (tanpa watermark / foto slide), `.ttmp3`, `.ig`, `.fb`, `.x`, `.dl <link apa pun>` — mesin yt-dlp (dipasang otomatis dari GitHub resmi) + tikwm untuk TikTok + cadangan untuk IG/FB/X.
+- **AI chat**: `.ai` memakai penyedia OpenAI-compatible (9router, OpenRouter, Groq, Ollama) bila API key diisi di dashboard; kalau belum, otomatis memakai OpenCode. Bisa membaca gambar & dokumen, ingat percakapan (`.aireset` untuk hapus).
+- **Daftar, limit & premium**: `.daftar nama.umur`, `.me`, `.limit`, `.cekprem`; limit harian untuk fitur berat (premium & owner bebas limit); opsi wajib daftar (`.wajibdaftar on`) dan atur limit (`.setlimit`, `.addlimit`) dari WhatsApp atau dashboard.
+- **Perintah kustom tanpa ngoding** (dashboard → *Perintah Kustom*): panggil API mana pun, ambil data dengan path seperti `result.images.random`, lalu balas teks / gambar / video / audio / stiker / dokumen. Ada tombol *Coba*, rahasia API key terenkripsi, dan pengaman SSRF. Versi cepat dari WhatsApp: `.addcustom nama | balasan`.
+- **Integrasi n8n**: webhook keluar (event pesan, perintah, anggota grup; bertanda tangan HMAC; n8n bisa membalas) dan API masuk `POST /api/v1/send` dengan token.
+- **Paket fitur tambahan opsional**: *classic* (±2.250 perintah, 7 engine) dan *extra* (±270 perintah) **dinonaktifkan secara bawaan** agar menu ringkas. Filenya tetap ada; nyalakan lagi di dashboard → *Sistem & Database* bila perlu.
 - **Graphify** terpasang untuk memetakan kode project menjadi knowledge graph.
 
 ## Persyaratan
@@ -81,18 +89,88 @@ Atur di dashboard → **Sistem & Database**, atau `config/config.json`:
 
 ```jsonc
 "database": {
-  "driver": "json",                                  // json | sqlite | mysql
+  "driver": "json",                                  // json | sqlite | mysql | postgres
   "json":   { "file": "data/database.json" },
   "sqlite": { "file": "data/database.sqlite" },
-  "mysql":  { "host": "127.0.0.1", "port": 3306, "user": "root", "password": "", "database": "xorizn_bot" }
+  "mysql":  { "host": "127.0.0.1", "port": 3306, "user": "root", "password": "", "database": "xorizn_bot" },
+  "postgres": { "connectionString": "postgresql://user:password@host:5432/postgres", "ssl": "auto" }
 }
 ```
 
 **Memakai XAMPP:** buka XAMPP Control Panel → *Start* modul **MySQL** → di dashboard pilih *MySQL / XAMPP* → **Tes koneksi** → **Pindahkan data & pakai** → restart.
 Database `xorizn_bot` dan tabel `bot_store` dibuat otomatis (lihat isinya di phpMyAdmin).
 
+**Memakai Supabase:** buka project Supabase → *Project Settings → Database → Connection string → URI* (pilih *Session pooler*) → tempel di dashboard → *Postgres / Supabase* → **Tes koneksi** → **Pindahkan data & pakai** → restart. Tabel `bot_store` (kolom `data` bertipe JSONB, bisa di-query dari Supabase) dibuat otomatis; SSL aktif otomatis.
+
 Semua driver menyimpan baris `(collection, id, data JSON)` sehingga data bisa dipindah bolak-balik tanpa kehilangan isi.
-Bila MySQL mati saat bot start, bot tetap jalan memakai JSON sementara dan dashboard menampilkan peringatan.
+Bila MySQL / Postgres tidak bisa dihubungi saat bot start, bot tetap jalan memakai JSON sementara dan dashboard menampilkan peringatan.
+
+## Perintah kustom (tanpa ngoding)
+
+Buka dashboard → **Perintah Kustom** → *Perintah baru* (atau pilih contoh). Setiap perintah adalah rangkaian langkah:
+
+| Langkah | Fungsi |
+|---|---|
+| 🌐 Panggil API | GET/POST/PUT/PATCH/DELETE, header, query, body JSON/form. Hasil disimpan ke variabel (bawaan `res`). |
+| 🎯 Ambil data | Path seperti `res.result.images.random`, `res.data[0].url`, `res.list.length` |
+| ✅ Cek syarat | ada / kosong / sama / mengandung / lebih dari / regex — bila gagal, kirim pesan lalu berhenti |
+| 📝 Simpan, 🎲 Acak | Simpan teks/variabel, pilih acak dari daftar |
+| 💬 Balas | teks, gambar, video, audio, voice note, stiker, dokumen (media diambil dari URL) |
+| 🤖 Tanya AI, 😀 Reaksi, ⏱️ Jeda, ⏹️ Selesai | — |
+
+**Template:** `{{text}}` (teks setelah perintah), `{{arg1}}`, `{{sender.name}}`, `{{sender.number}}`, `{{chat.name}}`, `{{quoted.text}}`, `{{date}}`, `{{time}}`, hasil langkah (`{{res.title}}`).
+Modifier path: `random first last length reverse shuffle keys values`, indeks `[0]` / `-1`.
+Filter: `{{res.title | upper | default:-}}` — upper, lower, trim, default:x, truncate:n, join:sep, urlencode, json, number.
+
+**Rahasia:** simpan API key di panel *Rahasia* (terenkripsi AES-256-GCM, kunci di `data/secret.key`), pakai di header/query/URL dengan `{{secret.NAMA}}`. Nilai rahasia tidak pernah ditampilkan lagi dan di teks balasan selalu tampil `***`.
+
+**Keamanan & ketahanan:**
+- Tanpa `eval` — path & template dibaca oleh parser khusus; `__proto__`/`constructor` ditolak.
+- Anti-SSRF — API ke localhost, IP privat, dan alamat metadata cloud diblokir (termasuk domain yang di-resolve ke IP privat dan redirect). Host lokal yang memang dipakai (mis. n8n `localhost:5678`) ditambahkan di *Host lokal yang diizinkan*.
+- Batas: 25 langkah, 5 panggilan HTTP, 5 balasan, 90 detik, respons API 5 MB, media 25 MB.
+- Perintah yang error hanya membalas pesan error ke pengguna; detailnya tampil di dashboard (*Error terakhir*). Bot tidak berhenti.
+- Nama yang bentrok dengan fitur bawaan ditolak, kecuali centang *Timpa perintah bawaan*.
+
+Contoh (mode JSON di editor):
+
+```json
+{
+  "name": "kucing",
+  "description": "Gambar kucing acak",
+  "flags": { "limit": 1 },
+  "steps": [
+    { "type": "http", "url": "https://api.thecatapi.com/v1/images/search?limit=5", "save": "res" },
+    { "type": "pick", "path": "res.random.url", "save": "img", "failText": "Gambar tidak ditemukan." },
+    { "type": "reply", "kind": "image", "url": "{{img}}", "text": "🐱 Nih {{sender.name}}" }
+  ]
+}
+```
+
+Dari WhatsApp (owner): `.addcustom nama | balasan`, `.listcustom`, `.togglecustom nama on/off`, `.delcustom nama`.
+
+## Integrasi n8n
+
+Dashboard → **Integrasi (n8n)**.
+
+**Webhook keluar** — bot mengirim `POST` JSON ke URL n8n (node *Webhook*) untuk event yang dipilih:
+
+```json
+{ "event": "message", "bot": { "name": "xorizn-bot", "number": "628..." }, "at": 1790000000000,
+  "data": { "chat": "628...@s.whatsapp.net", "isGroup": false, "sender": "628...@s.whatsapp.net", "senderName": "Budi", "type": "conversation", "text": "halo", "quotedText": "" } }
+```
+
+Event: `message` (pesan masuk), `command` (perintah dijalankan, + `command`, `args`, `ok`), `group` (anggota masuk/keluar/promote/demote).
+Header `X-Xorizn-Signature: sha256=<HMAC-SHA256 body dengan secret webhook>` untuk verifikasi. Aktifkan *Balas dari n8n* agar respons `{"reply": "teks"}` dari node *Respond to Webhook* dikirim ke chat asal.
+
+**API masuk** — aktifkan API dan buat token, lalu dari n8n (node *HTTP Request*):
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/v1/send \
+  -H "Authorization: Bearer TOKEN_KAMU" -H "Content-Type: application/json" \
+  -d '{"to":"628123456789","text":"Halo dari n8n"}'
+```
+
+Field: `text`, `image` / `video` / `audio` / `document` / `sticker` (URL), `caption`, `fileName`, `ptt`. `to` bisa nomor (`08…` / `628…`), JID pengguna, atau JID grup. Endpoint lain: `GET /api/v1/status`, `GET /api/v1/groups`. Maksimal 60 permintaan/menit.
 
 ## AI OpenCode (lewat 9router)
 
@@ -162,7 +240,8 @@ xorizn-bot/
 │   │   ├── config.js         # pemuat config/config.json + daftar path
 │   │   ├── logger.js
 │   │   └── database/         # Database + driver json / sqlite / mysql
-│   ├── features/             # welcome (discord-canvas), moderasi, AFK, auto-respon, stiker, OpenCode, pembaca media
+│   ├── features/             # welcome, moderasi, stiker, audio, downloader, AI, limit, integrasi n8n, OpenCode, pembaca media
+│   │   └── builder/          # perintah kustom: template/path, HTTP aman (anti-SSRF), rahasia terenkripsi, runner
 │   ├── compat/               # adapter classic & extra, global bersama, modul xorizn-baileys
 │   ├── dashboard/server.js   # server Express: API + menyajikan dashboard/out
 │   ├── utils/  tools/
@@ -250,6 +329,11 @@ Folder yang diabaikan ada di `.graphifyignore`. Di Claude Code ketik `/graphify 
 | MySQL `ECONNREFUSED` | Start MySQL di XAMPP, cek host/port/user di *Sistem & Database*. |
 | Dashboard tidak bisa dibuka dari HP | Ubah host dashboard ke `0.0.0.0` (pakai password kuat), restart. |
 | Fitur classic/extra error "apikey" | Isi `apiKeys` di *Sistem & Database* atau `config/config.json` (mis. `neoxr`, `kyzz`). |
+| Perintah kustom: "...jaringan lokal/privat dan diblokir" | API mengarah ke localhost/IP privat. Bila memang disengaja (mis. n8n lokal), tambahkan `host:port` di *Perintah Kustom → Host lokal yang diizinkan*. |
+| Webhook n8n tidak terpanggil | Cek status di *Integrasi* (badge OK/gagal) dan tombol *Kirim tes*. Pastikan workflow n8n aktif (URL *Production*). |
+| Downloader: "yt-dlp belum terpasang" | Owner kirim `.ytdlp install` (unduh dari GitHub resmi), atau aktifkan *Pasang yt-dlp otomatis* di dashboard. Di Termux: `pkg install python ffmpeg && pip install -U "yt-dlp[default]"`. |
+| YouTube minta verifikasi / IG minta login | Taruh cookies akun (format Netscape) di `src/bin/cookies.txt`, atau proxy di `src/bin/proxy.txt`. Cek dengan `.ytdlp`. |
+| `.ai` memakai OpenCode, bukan 9router | Isi *Base URL* & *API key* di dashboard → *Pengaturan Bot → AI chat*. Tanpa API key, `.ai` otomatis memakai OpenCode. |
 | `.oc` menjawab "Server OpenCode tidak bisa dihubungi" | Nyalakan OpenCode: `.ocstart`, tombol *Jalankan OpenCode* di dashboard, atau `opencode service start`. |
 | `.oc` menjawab "Kuota / rate limit habis" | Kuota model di 9router habis (mis. Gemini gratis). Pilih model lain dengan `.ocmodels` → `.ocmodel <nomor>`. |
 | Voice note tidak terbaca | Isi API key 9router di dashboard → *AI / OpenCode* → *Transkripsi audio*. |

@@ -1,6 +1,7 @@
 export default {
   command: ['ping', 'p'],
   category: 'main',
+  noRegister: true,
   description: 'Cek kecepatan respon bot',
   async run(m) {
     const t = Date.now()

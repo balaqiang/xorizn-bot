@@ -62,8 +62,12 @@ export function adReply(title, body) {
 export function getTarget(m, text = '') {
   if (m.mentionedJid?.length) return m.mentionedJid[0]
   if (m.quoted?.sender) return m.quoted.sender
-  const d = digits(text)
-  return d.length >= 8 ? toPnJid(d) : ''
+  // ambil SATU token nomor (bukan semua angka di teks, supaya "62812xxx 30d" tidak tergabung)
+  const token = String(text || '').split(/\s+/).find((w) => /^@?\+?[\d()-]{8,20}$/.test(w) && digits(w).length >= 8)
+  if (!token) return ''
+  let d = digits(token)
+  if (d.startsWith('0')) d = `62${d.slice(1)}` // format lokal 08xx → 628xx
+  return d.length >= 8 && d.length <= 16 ? toPnJid(d) : ''
 }
 
 /** Cari id participant sebagaimana dikenal grup (bisa LID) untuk dipakai di groupParticipantsUpdate. */

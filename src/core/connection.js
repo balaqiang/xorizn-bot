@@ -20,6 +20,7 @@ import logger, { baileysLogger } from './logger.js'
 import { SimpleCache } from './cache.js'
 import { onMessagesUpsert } from './handler.js'
 import { onGroupParticipants } from '../features/greetings.js'
+import { emit as emitWebhook } from '../features/integrations.js'
 import { getGroup } from './models.js'
 import { digits } from './jid.js'
 
@@ -201,6 +202,7 @@ export async function connect() {
   sock.ev.on('messages.upsert', (ev) => onMessagesUpsert(ev))
 
   sock.ev.on('group-participants.update', async (ev) => {
+    emitWebhook('group', { group: ev.id, action: ev.action, participants: (ev.participants || []).map((p) => (typeof p === 'string' ? p : p?.phoneNumber || p?.id)), author: ev.author || '' })
     try {
       await onGroupParticipants(sock, ev)
     } catch (err) {

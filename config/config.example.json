@@ -22,6 +22,15 @@
       "user": "root",
       "password": "",
       "database": "xorizn_bot"
+    },
+    "postgres": {
+      "connectionString": "",
+      "host": "127.0.0.1",
+      "port": 5432,
+      "user": "postgres",
+      "password": "",
+      "database": "postgres",
+      "ssl": "auto"
     }
   },
   "dashboard": {
@@ -31,8 +40,8 @@
     "password": ""
   },
   "packs": {
-    "classic": true,
-    "extra": true
+    "classic": false,
+    "extra": false
   },
   "apiKeys": {
     "kyzz": "",
