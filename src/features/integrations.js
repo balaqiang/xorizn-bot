@@ -32,7 +32,7 @@ function warnOnce(id, msg) {
 export const sign = (secret, body) => `sha256=${crypto.createHmac('sha256', String(secret || '')).update(body).digest('hex')}`
 
 /** Kirim event ke semua webhook yang berlangganan. Tidak pernah melempar. */
-export function emit(event, data, { chat } = {}) {
+export function emit(event, data, { chat = event === 'group' ? data?.group : data?.chat } = {}) {
   const hooks = webhooks().filter((w) => (w.events || ['message']).includes(event))
   if (!hooks.length) return
   const body = JSON.stringify({ event, bot: { name: bot.settings?.botName, number: String(bot.sock?.user?.id || '').split(':')[0].split('@')[0] }, at: Date.now(), data })

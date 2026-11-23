@@ -1,5 +1,5 @@
 // Start an isolated verification instance of xorizn-bot.
-//   node .claude/skills/verify-xorizn-bot/scripts/up.mjs [--name v1] [--packs classic,extra] [--copy-keys] [--timeout 180]
+//   node .claude/skills/verify-xorizn-bot/scripts/up.mjs [--name v1] [--packs default|core|classic,extra] [--copy-keys] [--timeout 180]
 // Copies the current working tree (tracked + untracked, minus .gitignore'd files) into
 // %TEMP%/xorizn-verify/<name>/app, links node_modules, writes a fresh config.json, and boots
 // `node --import preload.mjs src/index.js --no-connect`. Prints the instance JSON when it is usable.
@@ -42,13 +42,20 @@ const fingerprint = treeFingerprint()
 // 2. config: example + isolation overrides (never the user's config.json, except opt-in keys/packs)
 const example = JSON.parse(fs.readFileSync(path.join(app, 'config', 'config.example.json'), 'utf8'))
 let userCfg = {}
-try {
-  userCfg = JSON.parse(fs.readFileSync(path.join(REPO, 'config', 'config.json'), 'utf8'))
-} catch {}
+if (args.packs === undefined || args['copy-keys']) {
+  try {
+    userCfg = JSON.parse(fs.readFileSync(path.join(REPO, 'config', 'config.json'), 'utf8'))
+  } catch {}
+}
 const port = await freePort()
 const controlPort = await freePort()
 const password = crypto.randomBytes(12).toString('base64url')
-const packs = args.packs !== undefined ? { classic: String(args.packs).includes('classic'), extra: String(args.packs).includes('extra') } : { ...example.packs, ...(userCfg.packs || {}) }
+let packs = { ...example.packs, ...(userCfg.packs || {}) }
+if (args.packs === 'default') packs = example.packs
+else if (args.packs !== undefined) {
+  const selected = String(args.packs).split(',')
+  packs = { classic: selected.includes('classic'), extra: selected.includes('extra') }
+}
 const config = {
   ...example,
   bot: { ...example.bot, name: 'xorizn-verify', owners: [FIXTURE.owner], pairingNumber: '' },

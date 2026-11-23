@@ -1,0 +1,26 @@
+{
+  "id": "simulasichat0001",
+  "name": "Balas ke chat WhatsApp asal",
+  "active": false,
+  "nodes": [
+    {
+      "id": "9ca992be-cff7-485d-b955-598ab3ba94b0",
+      "name": "Pesan dari bot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "40f5f9ba-a5e1-4052-a3e4-4815da9442c1",
+      "parameters": { "httpMethod": "POST", "path": "simulasi-chat", "responseMode": "responseNode", "options": {} }
+    },
+    {
+      "id": "98362b45-bbf6-4af1-a274-c18ba1abb8a1",
+      "name": "Balas",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [240, 0],
+      "parameters": { "respondWith": "json", "responseBody": "={{ { reply: 'n8n menerima ' + $json.body.data.text } }}", "options": {} }
+    }
+  ],
+  "connections": { "Pesan dari bot": { "main": [[{ "node": "Balas", "type": "main", "index": 0 }]] } },
+  "settings": { "executionOrder": "v1" }
+}

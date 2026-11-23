@@ -160,11 +160,19 @@ const SETTINGS_KEYS = [
   'website', 'channel', 'requireRegister', 'limit', 'ai', 'downloader'
 ]
 
+const publicIntegrations = () => ({
+  webhooks: (bot.settings.webhooks || []).map(({ secret, ...w }) => ({ ...w, secretSet: !!secret })),
+  status: integ.webhookStatus(),
+  events: integ.EVENTS,
+  api: { enabled: !!bot.settings.api?.enabled, tokenSet: !!bot.settings.api?.token, tokenHint: bot.settings.api?.token ? `${bot.settings.api.token.slice(0, 6)}…${bot.settings.api.token.slice(-4)}` : '' }
+})
+
 /** Pengaturan untuk dikirim ke browser: tanpa rahasia (API key AI hanya ditandai tersimpan/tidak). */
 function publicSettings() {
   const { opencode: _oc, ai, ...settings } = bot.settings
   const { apiKey, ...aiRest } = ai || {}
-  return { ...settings, ai: { ...aiRest, apiKeySet: !!apiKey } }
+  const { webhooks, api } = publicIntegrations()
+  return { ...settings, webhooks, api, ai: { ...aiRest, apiKeySet: !!apiKey } }
 }
 const clampNum = (v, min, max, def) => {
   const n = Number(v)
@@ -550,12 +558,6 @@ export async function startDashboard() {
   })
 
   // ----- integrasi (webhook n8n & API masuk) -----
-  const publicIntegrations = () => ({
-    webhooks: (bot.settings.webhooks || []).map(({ secret, ...w }) => ({ ...w, secretSet: !!secret })),
-    status: integ.webhookStatus(),
-    events: integ.EVENTS,
-    api: { enabled: !!bot.settings.api?.enabled, tokenSet: !!bot.settings.api?.token, tokenHint: bot.settings.api?.token ? `${bot.settings.api.token.slice(0, 6)}…${bot.settings.api.token.slice(-4)}` : '' }
-  })
   app.get('/api/integrations', (req, res) => res.json(publicIntegrations()))
   app.put('/api/integrations/webhooks', (req, res) => {
     const cur = bot.settings.webhooks || []

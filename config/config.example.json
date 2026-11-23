@@ -40,8 +40,8 @@
     "password": ""
   },
   "packs": {
-    "classic": false,
-    "extra": false
+    "classic": true,
+    "extra": true
   },
   "apiKeys": {
     "kyzz": "",

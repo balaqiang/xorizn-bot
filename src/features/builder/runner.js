@@ -5,7 +5,7 @@
  *   http   { method, url, headers, query, body, bodyType: json|form|text, responseType: auto|json|text, timeout, save, failText }
  *   pick   { path, save, required, failText }          ambil data: res.result.images.random
  *   set    { save, value }                             simpan teks / nilai
- *   random { items: [...], save }                      pilih acak dari daftar
+ *   random { items: [...], save } | { path, itemPath?, save }   pilih satu dari daftar
  *   check  { path, op, value, failText }               hentikan dengan pesan bila syarat tidak terpenuhi
  *   reply  { kind: text|image|video|audio|voice|sticker|document, text, url, fileName }
  *   react  { emoji }
@@ -14,9 +14,10 @@
  *   stop   { text }                                    balas (opsional) lalu selesai
  */
 import sharp from 'sharp'
-import { render, renderDeep, evalExpr, checkTemplate, toText, TemplateError } from './path.js'
+import { render, renderDeep, evalExpr, getPath, splitPath, checkTemplate, toText, TemplateError } from './path.js'
 import { safeRequest, parseBody, NetError } from './net.js'
 import { secretScope } from './secrets.js'
+import { createRedactor, responseSample } from './preview.js'
 import { toSticker } from '../sticker.js'
 import { toVoiceNote } from '../media.js'
 
@@ -60,6 +61,18 @@ function deepStrings(obj, field, i, depth = 0) {
   if (typeof obj === 'string') return str(obj, field, i)
   if (Array.isArray(obj)) return obj.forEach((x) => deepStrings(x, field, i, depth + 1))
   if (obj && typeof obj === 'object') for (const v of Object.values(obj)) deepStrings(v, field, i, depth + 1)
+}
+
+function literalPath(value, field, i) {
+  str(value, field, i, { required: true, max: 300 })
+  const path = value.trim()
+  if (!/^[\w$-]+(?:\.[\w$-]+|\[-?\d+\])*$/.test(path)) throw new StepError(`Langkah ${i + 1}: "${field}" harus berupa path kolom, mis. res.data.items atau url.`, i)
+  try {
+    splitPath(path)
+  } catch (err) {
+    throw new StepError(`Langkah ${i + 1}: ${err.message}`, i)
+  }
+  return path
 }
 
 /** Validasi & rapikan definisi. Melempar StepError dengan pesan yang bisa ditampilkan. */
@@ -109,9 +122,14 @@ export function validate(def) {
       return { type: t, save: s.save, value: s.value }
     }
     if (t === 'random') {
+      varName(s.save, i)
+      if (s.path !== undefined) {
+        const path = literalPath(s.path, 'path', i)
+        const itemPath = s.itemPath ? literalPath(s.itemPath, 'itemPath', i) : ''
+        return { type: t, path, itemPath, save: s.save }
+      }
       if (!Array.isArray(s.items) || !s.items.length || s.items.length > 100) throw new StepError(`Langkah ${i + 1}: isi 1-100 pilihan.`, i)
       s.items.forEach((x) => str(String(x), 'items', i))
-      varName(s.save, i)
       return { type: t, items: s.items.map(String), save: s.save }
     }
     if (t === 'check') {
@@ -228,6 +246,7 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
   const scope = baseScope(m, ctx)
   const replies = []
   const trace = []
+  const { remember, rememberCredentials, mask } = createRedactor()
   let httpCalls = 0
   const send = async (content, summary) => {
     if (replies.length >= LIMITS.replies) throw new StepError(`Maksimal ${LIMITS.replies} balasan per perintah.`)
@@ -241,13 +260,16 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
       if (Date.now() - started > LIMITS.runtimeMs) throw new StepError('Perintah berjalan terlalu lama (lebih dari 90 detik).', i)
       const t0 = Date.now()
       let info = ''
+      let preview
       switch (step.type) {
         case 'http': {
           if (++httpCalls > LIMITS.http) throw new StepError(`Maksimal ${LIMITS.http} panggilan HTTP.`, i)
-          const hs = { ...scope, secret: secretScope() }
+          const hs = { ...scope, secret: secretScope(remember) }
           const url = new URL(render(step.url, hs, { allowSecrets: true }))
           for (const [k, v] of Object.entries(renderDeep(step.query, hs, { allowSecrets: true }))) if (v !== '' && v !== undefined) url.searchParams.set(k, toText(v))
           const headers = Object.fromEntries(Object.entries(renderDeep(step.headers, hs, { allowSecrets: true })).map(([k, v]) => [k.toLowerCase(), toText(v)]))
+          rememberCredentials(url.searchParams)
+          rememberCredentials(Object.entries(headers))
           let body
           if (step.method !== 'GET' && step.method !== 'DELETE' && step.body !== '' && step.body !== undefined) {
             const b = renderDeep(step.body, hs, { allowSecrets: true })
@@ -266,6 +288,7 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
           if (res.status >= 400) throw new StepError(step.failText ? tpl(step.failText) : `API membalas HTTP ${res.status}.`, i)
           scope[step.save] = parseBody(res, step.responseType)
           scope[`${step.save}_status`] = res.status
+          if (dryRun && !Buffer.isBuffer(scope[step.save])) preview = responseSample(scope[step.save], mask)
           info = `${step.method} ${url.hostname} → ${res.status} (${res.buffer.length} B)`
           break
         }
@@ -273,18 +296,28 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
           const v = evalExpr(step.path, scope)
           if (step.required && isEmpty(v)) throw new StepError(step.failText ? tpl(step.failText) : 'Data tidak ditemukan.', i)
           scope[step.save] = v
-          info = `${step.save} = ${toText(v).slice(0, 80)}`
+          info = `${step.save} = ${mask(toText(v)).slice(0, 80)}`
           break
         }
         case 'set': {
           scope[step.save] = tpl(step.value, { raw: true })
-          info = `${step.save} = ${toText(scope[step.save]).slice(0, 80)}`
+          info = `${step.save} = ${mask(toText(scope[step.save])).slice(0, 80)}`
           break
         }
         case 'random': {
-          const item = step.items[Math.floor(Math.random() * step.items.length)]
-          scope[step.save] = tpl(item)
-          info = `${step.save} = ${toText(scope[step.save]).slice(0, 80)}`
+          if (step.path) {
+            const items = getPath(scope, step.path, { literal: true })
+            if (!Array.isArray(items)) throw new StepError(`Kolom "${step.path}" harus berupa daftar JSON.`, i)
+            if (!items.length) throw new StepError(`Daftar "${step.path}" kosong.`, i)
+            const item = items[Math.floor(Math.random() * items.length)]
+            const selected = step.itemPath ? getPath(item, step.itemPath, { literal: true, allowSecrets: true }) : item
+            if (selected === undefined || selected === null) throw new StepError('Item terpilih tidak memiliki nilai pada kolom yang diminta.', i)
+            scope[step.save] = selected
+          } else {
+            const item = step.items[Math.floor(Math.random() * step.items.length)]
+            scope[step.save] = tpl(item)
+          }
+          info = `${step.save} = ${mask(toText(scope[step.save])).slice(0, 80)}`
           break
         }
         case 'check': {
@@ -292,15 +325,15 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
           const ok = checkOp(v, step.op, tpl(step.value))
           info = `${step.path} ${step.op} → ${ok ? 'lolos' : 'berhenti'}`
           if (!ok) {
-            const text = tpl(step.failText || '') || 'Syarat tidak terpenuhi.'
+            const text = mask(tpl(step.failText || '')) || 'Syarat tidak terpenuhi.'
             await send({ text }, { kind: 'text', text })
-            trace.push({ step: i + 1, type: step.type, ms: Date.now() - t0, ok: true, info })
+            trace.push({ step: i + 1, type: step.type, ms: Date.now() - t0, ok: true, info: mask(info) })
             return { ok: true, replies, trace, stopped: true }
           }
           break
         }
         case 'reply': {
-          const caption = tpl(step.text || '').slice(0, LIMITS.textLen)
+          const caption = mask(tpl(step.text || '')).slice(0, LIMITS.textLen)
           if (step.kind === 'text') {
             if (!caption.trim()) throw new StepError('Teks balasan kosong.', i)
             await send({ text: caption }, { kind: 'text', text: caption })
@@ -308,20 +341,25 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
             break
           }
           const url = tpl(step.url)
-          if (!/^https?:\/\//i.test(url)) throw new StepError(`Langkah ${i + 1}: URL media tidak valid (${url.slice(0, 80) || 'kosong'}).`, i)
+          if (!/^https?:\/\//i.test(url)) throw new StepError(`Langkah ${i + 1}: URL media tidak valid.`, i)
           const media = await fetchMedia(url, i)
           const ct = media.contentType.split(';')[0]
           let content
+          let previewImage
           if (step.kind === 'image' || step.kind === 'sticker') {
             const meta = await sharp(media.buffer, { animated: true }).metadata().catch(() => null)
             const isVideo = /video|gif/.test(ct)
             if (!meta && !(step.kind === 'sticker' && isVideo)) throw new StepError(`Langkah ${i + 1}: URL bukan gambar (${ct || 'tipe tidak diketahui'}).`, i)
             content = step.kind === 'image' ? { image: media.buffer, caption } : dryRun ? { sticker: true } : { sticker: await toSticker(media.buffer, { mimetype: isVideo ? ct : 'image/png' }) }
+            if (dryRun && step.kind === 'image') {
+              const thumbnail = await sharp(media.buffer).rotate().resize({ width: 192, height: 192, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 75 }).toBuffer()
+              previewImage = 'data:image/jpeg;base64,' + thumbnail.toString('base64')
+            }
           } else if (step.kind === 'video') content = { video: media.buffer, caption, mimetype: /video/.test(ct) ? ct : 'video/mp4' }
           else if (step.kind === 'audio') content = { audio: media.buffer, mimetype: /audio/.test(ct) ? ct : 'audio/mpeg' }
           else if (step.kind === 'voice') content = dryRun ? { audio: true } : { audio: await toVoiceNote(media.buffer, ct), mimetype: 'audio/ogg; codecs=opus', ptt: true }
-          else content = { document: media.buffer, mimetype: ct || 'application/octet-stream', fileName: tpl(step.fileName || '') || 'file', caption }
-          await send(content, { kind: step.kind, url, contentType: ct, bytes: media.buffer.length, text: caption })
+          else content = { document: media.buffer, mimetype: ct || 'application/octet-stream', fileName: mask(tpl(step.fileName || '')) || 'file', caption }
+          await send(content, { kind: step.kind, url: mask(url), contentType: mask(ct), bytes: media.buffer.length, text: caption, ...(previewImage && { previewImage }) })
           info = `${step.kind} ${ct} ${media.buffer.length} B`
           break
         }
@@ -336,7 +374,7 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
           const prompt = tpl(step.prompt)
           const res = await chat({ chat: `custom:${m.chat}`, sender: `${def.name}:${Date.now()}` }, prompt)
           scope[step.save] = res.text
-          info = `${res.model}: ${res.text.slice(0, 60)}`
+          info = `${res.model}: ${mask(res.text).slice(0, 60)}`
           break
         }
         case 'delay': {
@@ -345,18 +383,18 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
           break
         }
         case 'stop': {
-          const text = tpl(step.text || '')
+          const text = mask(tpl(step.text || ''))
           if (text.trim()) await send({ text }, { kind: 'text', text })
           trace.push({ step: i + 1, type: step.type, ms: Date.now() - t0, ok: true, info: 'selesai' })
           return { ok: true, replies, trace, stopped: true }
         }
       }
-      trace.push({ step: i + 1, type: step.type, ms: Date.now() - t0, ok: true, info })
+      trace.push({ step: i + 1, type: step.type, ms: Date.now() - t0, ok: true, info: mask(info), ...preview })
     }
     return { ok: true, replies, trace }
   } catch (err) {
     const step = err.step ?? trace.length
-    const message = err instanceof StepError || err instanceof NetError || err instanceof TemplateError ? err.message : `Kesalahan internal: ${err?.message || err}`
+    const message = mask(err instanceof StepError || err instanceof NetError || err instanceof TemplateError ? err.message : `Kesalahan internal: ${err?.message || err}`)
     trace.push({ step: step + 1, type: def.steps[step]?.type || '?', ms: 0, ok: false, info: message })
     return { ok: false, replies, trace, error: message, errorStep: step + 1 }
   }

@@ -89,7 +89,7 @@ export async function chat(m, text, media = null) {
 
   const model = await activeModel()
   const messages = [{ role: 'system', content: c.systemPrompt || defaultSystem() }, ...h.messages, { role: 'user', content }]
-  const json = await request('/chat/completions', { model, messages, temperature: 0.7 })
+  const json = await request('/chat/completions', { model, messages, temperature: 0.7, stream: false })
   const answer = String(json?.choices?.[0]?.message?.content || '').trim()
   if (!answer) throw new Error('AI tidak memberi jawaban. Coba ulangi.')
 

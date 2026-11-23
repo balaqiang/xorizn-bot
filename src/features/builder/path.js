@@ -81,7 +81,7 @@ export function splitPath(path) {
 }
 
 /** Ambil nilai dari scope berdasarkan path. */
-export function getPath(scope, path, { allowSecrets = false } = {}) {
+export function getPath(scope, path, { allowSecrets = false, literal = false } = {}) {
   const segs = splitPath(path)
   if (!segs.length) return undefined
   if (segs[0] === 'secret' && !allowSecrets) return '***'
@@ -98,6 +98,7 @@ export function getPath(scope, path, { allowSecrets = false } = {}) {
         cur = cur[seg]
         continue
       }
+      if (literal) return undefined
       const mod = modifier(cur, seg)
       if (mod.hit) {
         cur = mod.value

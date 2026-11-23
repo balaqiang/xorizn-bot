@@ -4,7 +4,7 @@
 # XORIZN-BOT
 
 Bot WhatsApp multi-device berbasis **Baileys v7** dengan **dashboard web localhost**,
-±130 fitur bawaan yang rapi (grup, owner, stiker, audio, downloader, AI, daftar/limit/premium), **AI lewat 9router / OpenCode**, dan pilihan database **JSON / SQLite / MySQL (XAMPP)**.
+fitur grup, owner, stiker, audio, downloader, daftar/limit/premium, **AI lewat 9router / OpenCode**, dan database **JSON, SQLite, MySQL (XAMPP), atau PostgreSQL (termasuk Supabase)**.
 
 📢 Channel: https://whatsapp.com/channel/0029VbEAM5cGJP8FzJH1JH0R
 
@@ -26,9 +26,9 @@ Bot WhatsApp multi-device berbasis **Baileys v7** dengan **dashboard web localho
 - **Downloader bawaan**: `.play`, `.yts`, `.ytmp3`, `.ytmp4`, `.tiktok` (tanpa watermark / foto slide), `.ttmp3`, `.ig`, `.fb`, `.x`, `.dl <link apa pun>` — mesin yt-dlp (dipasang otomatis dari GitHub resmi) + tikwm untuk TikTok + cadangan untuk IG/FB/X.
 - **AI chat**: `.ai` memakai penyedia OpenAI-compatible (9router, OpenRouter, Groq, Ollama) bila API key diisi di dashboard; kalau belum, otomatis memakai OpenCode. Bisa membaca gambar & dokumen, ingat percakapan (`.aireset` untuk hapus).
 - **Daftar, limit & premium**: `.daftar nama.umur`, `.me`, `.limit`, `.cekprem`; limit harian untuk fitur berat (premium & owner bebas limit); opsi wajib daftar (`.wajibdaftar on`) dan atur limit (`.setlimit`, `.addlimit`) dari WhatsApp atau dashboard.
-- **Perintah kustom tanpa ngoding** (dashboard → *Perintah Kustom*): panggil API mana pun, ambil data dengan path seperti `result.images.random`, lalu balas teks / gambar / video / audio / stiker / dokumen. Ada tombol *Coba*, rahasia API key terenkripsi, dan pengaman SSRF. Versi cepat dari WhatsApp: `.addcustom nama | balasan`.
+- **Perintah kustom tanpa ngoding**. Dari *Perintah Kustom*, pemilik dapat mencoba endpoint, melihat contoh respons, memilih daftar dan kolom, lalu mengirim teks atau media. API key disimpan di panel *Rahasia*. Versi cepat dari WhatsApp memakai `.addcustom nama | balasan`.
 - **Integrasi n8n**: webhook keluar (event pesan, perintah, anggota grup; bertanda tangan HMAC; n8n bisa membalas) dan API masuk `POST /api/v1/send` dengan token.
-- **Paket fitur tambahan opsional**: *classic* (±2.250 perintah, 7 engine) dan *extra* (±270 perintah) **dinonaktifkan secara bawaan** agar menu ringkas. Filenya tetap ada; nyalakan lagi di dashboard → *Sistem & Database* bila perlu.
+- **Paket plugin**. Instalasi baru memuat plugin inti, *classic*, dan *extra*. Pemilik bisa mengubah pilihan paket di *Sistem & Database* serta mengatur perintah satu per satu di *Modul & Perintah*. Instalasi dengan pilihan paket tersimpan memakai pilihan tersebut.
 - **Graphify** terpasang untuk memetakan kode project menjadi knowledge graph.
 
 ## Persyaratan
@@ -106,6 +106,27 @@ Semua driver menyimpan baris `(collection, id, data JSON)` sehingga data bisa di
 Bila MySQL / Postgres tidak bisa dihubungi saat bot start, bot tetap jalan memakai JSON sementara dan dashboard menampilkan peringatan.
 
 ## Perintah kustom (tanpa ngoding)
+
+### Atur `.gambar` dengan API sendiri
+
+1. Buka **Perintah Kustom → Rahasia**. Beri nama, misalnya `GAMBAR_KEY`, masukkan API key, lalu pilih **Simpan rahasia**. Untuk API lokal, tambahkan `host:port` penyedia ke **Host lokal yang diizinkan**.
+2. Pilih **Gambar dari API saya**. Isi **URL endpoint**, kemudian pilih nama rahasia pada **API key untuk Authorization Bearer**. Untuk penyedia dengan header lain, isi misalnya `{"X-API-Key":"{{secret.GAMBAR_KEY}}"}` di **Header (JSON)**. Untuk kueri pencarian, isi misalnya `{"q":"{{text}}"}` di **Query (JSON)** dan masukkan kata pencarian di **Coba dulu**.
+3. Klik **Coba permintaan**. Panel menampilkan contoh respons dari endpoint. Di langkah **Pilih acak dari daftar**, atur pilihan sesuai bentuk respons.
+
+   | Respons API | Pilih daftar dari contoh | Kolom pada item |
+   |---|---|---|
+   | `{"result":{"images":["https://contoh.id/a.png"]}}` | `res.result.images` | Kosongkan |
+   | `{"data":{"items":[{"url":"https://contoh.id/b.png"}]}}` | `res.data.items` | `url` |
+
+4. Biarkan langkah terakhir memakai jenis **Gambar** dan URL media `{{img}}`. Klik **▶ Coba** untuk memeriksa gambar. Bot mengambil media dan membuat thumbnail di server. Tombol ini hanya menampilkan pratinjau di dashboard.
+5. Saat paket *classic* aktif, `.gambar` sudah menjadi alias pencarian gambar. Centang **Timpa perintah bawaan bernama sama** jika ingin mengarahkan nama itu ke perintah ini. Klik **Simpan**, lalu kirim `.gambar` dari WhatsApp yang terhubung. Gunakan prefix yang telah Anda pilih jika berbeda. Pencarian classic tetap tersedia melalui `.gimg`.
+6. Untuk berpindah penyedia, klik **Ubah** di baris `.gambar`, ganti endpoint dan referensi key, lalu ulangi langkah 3–5. Nama perintah dan jumlah pemakaiannya dipertahankan.
+
+Dalam **Ambil data** versi lama, `res.result.images.random` memilih satu item saat `images` berupa daftar. Jika `images` berupa objek dengan kolom `random`, ekspresi itu membaca nilai kolom. Dalam langkah **Pilih acak dari daftar**, setiap segmen path adalah nama kolom atau indeks. Misalnya, untuk `{"images":{"random":["a","b"]}}`, gunakan path `res.images.random`. Langkah itulah yang mengambil satu item acak dari daftar.
+
+Lihat perbandingan ketiga cara memilih data, bukti integrasi, serta perintah untuk mengulang pengujian di [panduan verifikasi](docs/VERIFIKASI.md).
+
+### Langkah yang bisa dirangkai
 
 Buka dashboard → **Perintah Kustom** → *Perintah baru* (atau pilih contoh). Setiap perintah adalah rangkaian langkah:
 
@@ -341,6 +362,7 @@ Folder yang diabaikan ada di `.graphifyignore`. Di Claude Code ketik `/graphify 
 
 ## Kredit
 
+- Kode proyek memakai [lisensi ISC](LICENSE) yang tercantum di `package.json`. Template dashboard menyertakan [lisensi MIT TailAdmin](dashboard/LICENSE.tailadmin).
 - [WhiskeySockets/Baileys](https://github.com/WhiskeySockets/Baileys) · [discord-canvas](https://github.com/xixi52/discord-canvas) · [Graphify](https://github.com/Graphify-Labs/graphify)
 - [TailAdmin Free Next.js](https://github.com/TailAdmin/free-nextjs-admin-dashboard) · [OpenCode](https://opencode.ai) · [9router](https://github.com/decolua/9router)
 - Lisensi kode pihak ketiga yang dipakai ada di `docs/licenses/`.

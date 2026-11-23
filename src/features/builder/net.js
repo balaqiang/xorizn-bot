@@ -94,7 +94,7 @@ function checkUrl(raw) {
   try {
     u = new URL(raw)
   } catch {
-    throw new NetError(`URL tidak valid: ${String(raw).slice(0, 120)}`)
+    throw new NetError('URL tidak valid.')
   }
   if (!['http:', 'https:'].includes(u.protocol)) throw new NetError('Hanya URL http:// atau https:// yang diizinkan.')
   const allowed = isAllowed(u)

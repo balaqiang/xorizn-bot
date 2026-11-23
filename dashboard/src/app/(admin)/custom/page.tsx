@@ -9,12 +9,14 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { CodeIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import { api, useApi } from "@/lib/api";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type Step = Record<string, any> & { type: string };
 type Cmd = { name: string; aliases: string[]; description: string; usage: string; category: string; enabled: boolean; cooldown: number; flags: Record<string, any>; steps: Step[]; override?: boolean; uses?: number; lastUsed?: number; lastError?: { at: number; message: string; step: number } | null };
 type Data = { commands: Cmd[]; secrets: { name: string; updatedAt: number }[]; allowHosts: string[]; limits: Record<string, number> };
-type TestResult = { ok: boolean; replies: any[]; trace: { step: number; type: string; ms: number; ok: boolean; info: string }[]; error?: string };
+type Trace = { step: number; type: string; ms: number; ok: boolean; info: string; sample?: unknown; sampleLimited?: boolean };
+type TestResult = { ok: boolean; replies: { kind: string; text?: string; previewImage?: string; bytes?: number }[]; trace: Trace[]; error?: string };
+type Trial = { steps: Step[]; text: string; json?: string; result: TestResult };
 
 const STEP_LABEL: Record<string, string> = {
   http: "🌐 Panggil API (HTTP)",
@@ -42,6 +44,17 @@ const NEW_STEP: Record<string, Step> = {
 };
 const EMPTY: Cmd = { name: "", aliases: [], description: "", usage: "", category: "custom", enabled: true, cooldown: 0, flags: { limit: 0 }, steps: [NEW_STEP.reply] };
 const PRESETS: { label: string; cmd: Cmd }[] = [
+  {
+    label: "Gambar dari API saya",
+    cmd: {
+      ...EMPTY, name: "gambar", description: "Kirim satu gambar acak dari API",
+      steps: [
+        { ...NEW_STEP.http, url: "", responseType: "json" },
+        { type: "random", path: "res.result.images", itemPath: "", save: "img" },
+        { type: "reply", kind: "image", url: "{{img}}", text: "" },
+      ],
+    },
+  },
   { label: "Balasan teks", cmd: { ...EMPTY, name: "rules", description: "Aturan grup", steps: [{ type: "reply", kind: "text", text: "📜 Aturan grup:\n1. Dilarang spam\n2. Sopan ya {{sender.name}}" }] } },
   {
     label: "Gambar acak dari API",
@@ -71,12 +84,34 @@ const parseJsonField = (s: string, fallback: any) => {
   return JSON.parse(s);
 };
 
-function StepEditor({ step, onChange, secrets }: { step: Step; onChange: (s: Step) => void; secrets: string[] }) {
+function sampleFields(value: unknown, path: string): { path: string; value: unknown }[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [{ path, value }];
+  return Object.entries(value).flatMap(([key, child]) =>
+    /^[\w$-]+$/.test(key) && !["__proto__", "constructor", "prototype"].includes(key)
+      ? sampleFields(child, path ? `${path}.${key}` : key)
+      : []
+  );
+}
+
+function arrayOptions(trace: Trace | undefined, name: string) {
+  return sampleFields(trace?.sample, name).flatMap(({ path, value }) => {
+    if (!Array.isArray(value)) return [];
+    const fields = value.flatMap(item => sampleFields(item, "").filter(f => f.path && typeof f.value === "string").map(f => f.path));
+    return [{ path, fields: [...new Set(fields)] }];
+  });
+}
+
+function StepEditor({ step, onChange, secrets, probe, onProbe, probing, lists }: {
+  step: Step; onChange: (s: Step) => void; secrets: string[]; probe?: Trace; onProbe: () => void;
+  probing: boolean; lists: ReturnType<typeof arrayOptions>;
+}) {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange({ ...step, [k]: e.target.value });
   const [jsonErr, setJsonErr] = useState<string | null>(null);
   const jsonField = (k: string, label: string, help?: string) => (
     <FormField label={label} help={jsonErr && jsonErr.startsWith(k) ? <span className="text-red-500">{jsonErr.slice(k.length + 1)}</span> : help} className="sm:col-span-2">
       <Textarea
+        key={JSON.stringify(step[k])}
+        aria-label={label}
         rows={3}
         className="font-mono text-xs"
         defaultValue={typeof step[k] === "string" ? step[k] : JSON.stringify(step[k] ?? {}, null, 2)}
@@ -84,8 +119,10 @@ function StepEditor({ step, onChange, secrets }: { step: Step; onChange: (s: Ste
           try {
             const v = e.target.value.trim();
             onChange({ ...step, [k]: k === "body" && v && !/^[[{]/.test(v) ? v : parseJsonField(v, k === "body" ? "" : {}) });
+            e.target.setCustomValidity("");
             setJsonErr(null);
           } catch {
+            e.target.setCustomValidity("JSON tidak valid");
             setJsonErr(`${k}:JSON tidak valid`);
           }
         }}
@@ -97,7 +134,17 @@ function StepEditor({ step, onChange, secrets }: { step: Step; onChange: (s: Ste
       return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <FormField label="Method"><NativeSelect value={step.method} onChange={set("method")}>{["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => <option key={m}>{m}</option>)}</NativeSelect></FormField>
-          <FormField label="URL" className="sm:col-span-3"><Input className="font-mono text-xs" value={step.url} onChange={set("url")} placeholder="https://api.contoh.com/gambar?q={{text | urlencode}}" /></FormField>
+          <FormField label="URL endpoint" className="sm:col-span-3"><Input aria-label="URL endpoint" className="font-mono text-xs" value={step.url} onChange={set("url")} placeholder="https://api.contoh.com/gambar?q={{text | urlencode}}" /></FormField>
+          <FormField label="API key untuk Authorization Bearer" className="sm:col-span-4" help="Simpan key di Perintah Kustom → Rahasia. Untuk penyedia dengan format lain, gunakan nama rahasia di header atau query.">
+            <NativeSelect aria-label="API key untuk Authorization Bearer" value={secrets.find(name => step.headers?.Authorization === `Bearer {{secret.${name}}}`) ?? ""} onChange={e => {
+              const headers = { ...step.headers };
+              for (const key of Object.keys(headers)) if (key.toLowerCase() === "authorization") delete headers[key];
+              if (e.target.value) headers.Authorization = `Bearer {{secret.${e.target.value}}}`;
+              onChange({ ...step, headers });
+            }}>
+              <option value="">Tanpa pilihan Bearer</option>{secrets.map(name => <option key={name}>{name}</option>)}
+            </NativeSelect>
+          </FormField>
           {jsonField("headers", "Header (JSON)", secrets.length ? `Rahasia: ${secrets.map((s) => `{{secret.${s}}}`).join(", ")}` : 'Contoh: {"Authorization": "Bearer {{secret.API_KEY}}"}')}
           {jsonField("query", "Query (JSON)", 'Contoh: {"q": "{{text}}"}')}
           {step.method !== "GET" && step.method !== "DELETE" && jsonField("body", "Body (JSON / teks)")}
@@ -107,12 +154,23 @@ function StepEditor({ step, onChange, secrets }: { step: Step; onChange: (s: Ste
           <FormField label="Simpan sebagai"><Input className="font-mono" value={step.save} onChange={set("save")} /></FormField>
           <FormField label="Batas waktu (dtk)"><Input type="number" min={1} max={30} value={step.timeout} onChange={set("timeout")} /></FormField>
           <FormField label="Pesan bila API error" className="sm:col-span-2"><Input value={step.failText} onChange={set("failText")} placeholder="kosong = pesan bawaan" /></FormField>
+          <div className="space-y-2 sm:col-span-4">
+            <Button size="sm" variant="outline" disabled={probing || !step.url} onClick={onProbe}>Coba permintaan</Button>
+            <p className="text-xs text-gray-500">Menjalankan langkah sampai permintaan ini, memakai teks uji dari panel Coba dulu.</p>
+            {probe && <div aria-live="polite" className="min-w-0 space-y-1 text-sm">
+              <p className={probe.ok ? "text-gray-600 dark:text-gray-400" : "text-red-500"}>{probe.info}</p>
+              {probe.sample !== undefined && <>
+                <p className="font-medium">Contoh respons{probe.sampleLimited && " (dipotong)"}</p>
+                <pre className="max-h-60 overflow-auto rounded-lg bg-gray-50 p-3 text-xs dark:bg-white/5">{JSON.stringify(probe.sample, null, 2)}</pre>
+              </>}
+            </div>}
+          </div>
         </div>
       );
     case "pick":
       return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <FormField label="Path data" help="Contoh: res.result.images.random • res.data[0].url • res.list.length" className="sm:col-span-2"><Input className="font-mono text-xs" value={step.path} onChange={set("path")} /></FormField>
+          <FormField label="Path data" help="Pada path lama result.images.random, daftar images menghasilkan satu item acak. Jika images adalah objek dengan kolom random, nilainya dibaca dari kolom itu." className="sm:col-span-2"><Input className="font-mono text-xs" value={step.path} onChange={set("path")} /></FormField>
           <FormField label="Simpan sebagai"><Input className="font-mono" value={step.save} onChange={set("save")} /></FormField>
           <FormField label="Pesan bila kosong" className="sm:col-span-3"><Input value={step.failText} onChange={set("failText")} /></FormField>
         </div>
@@ -124,13 +182,38 @@ function StepEditor({ step, onChange, secrets }: { step: Step; onChange: (s: Ste
           <FormField label="Nilai (template)" className="sm:col-span-2"><Input value={step.value} onChange={set("value")} placeholder="{{res.title | upper}}" /></FormField>
         </div>
       );
-    case "random":
+    case "random": {
+      const fromResponse = typeof step.path === "string";
+      const fields = lists.find(list => list.path === step.path)?.fields ?? [];
       return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <FormField label="Pilihan (satu per baris)" className="sm:col-span-2"><Textarea rows={3} defaultValue={(step.items || []).join("\n")} onBlur={(e) => onChange({ ...step, items: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} /></FormField>
+          <FormField label="Sumber pilihan" className="sm:col-span-3">
+            <NativeSelect aria-label="Sumber pilihan" value={fromResponse ? "path" : "items"} onChange={e => onChange(e.target.value === "path"
+              ? { type: "random", path: lists[0]?.path || "", itemPath: "", save: step.save }
+              : { ...NEW_STEP.random, save: step.save })}>
+              <option value="items">Daftar yang ditulis sendiri</option><option value="path">Daftar dari respons API</option>
+            </NativeSelect>
+          </FormField>
+          {fromResponse ? <>
+            {lists.length > 0 && <FormField label="Pilih daftar dari contoh" className="sm:col-span-3">
+              <NativeSelect aria-label="Pilih daftar dari contoh" value={lists.some(l => l.path === step.path) ? step.path : ""} onChange={e => onChange({ ...step, path: e.target.value, itemPath: "" })}>
+                <option value="" disabled>Pilih daftar…</option>{lists.map(l => <option key={l.path}>{l.path}</option>)}
+              </NativeSelect>
+            </FormField>}
+            <FormField label="Path daftar" help="Setiap bagian path adalah nama kolom JSON. Langkah ini memilih satu item secara acak dari daftar tersebut.">
+              <Input aria-label="Path daftar" value={step.path} onChange={set("path")} placeholder="res.result.images" />
+            </FormField>
+            <FormField label="Kolom pada item" help="Kosongkan jika item sudah berupa URL. Untuk objek gambar, pilih atau ketik url.">
+              <Input aria-label="Kolom pada item" value={step.itemPath ?? ""} onChange={set("itemPath")} placeholder="Pakai item langsung" />
+              {fields.length > 0 && <NativeSelect aria-label="Pilih kolom dari contoh" value={fields.includes(step.itemPath) ? step.itemPath : ""} onChange={set("itemPath")}>
+                <option value="">Pakai item langsung</option>{fields.map(f => <option key={f}>{f}</option>)}
+              </NativeSelect>}
+            </FormField>
+          </> : <FormField label="Pilihan (satu per baris)" className="sm:col-span-2"><Textarea rows={3} defaultValue={(step.items || []).join("\n")} onBlur={(e) => onChange({ ...step, items: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} /></FormField>}
           <FormField label="Simpan sebagai"><Input className="font-mono" value={step.save} onChange={set("save")} /></FormField>
         </div>
       );
+    }
     case "check":
       return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
@@ -183,8 +266,18 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
   const [jsonMode, setJsonMode] = useState(false);
   const [json, setJson] = useState("");
   const [testText, setTestText] = useState("");
-  const [test, setTest] = useState<TestResult | null>(null);
+  const [trial, setTrial] = useState<Trial | null>(null);
+  const [fullTrial, setFullTrial] = useState(false);
   const [busy, setBusy] = useState(false);
+  const editor = useRef<HTMLDivElement>(null);
+  const traceAt = (i: number) => {
+    if (!trial || trial.text !== testText || !c.steps.slice(0, i + 1).every((s, j) => s === trial.steps[j])) return undefined;
+    return trial.result.trace.find(t => t.step === i + 1);
+  };
+  const matchesDraft = trial && trial.text === testText && (jsonMode
+    ? trial.json === json
+    : c.steps.length === trial.steps.length && c.steps.every((step, i) => step === trial.steps[i]));
+  const test = fullTrial && matchesDraft ? trial.result : null;
   const flag = (k: string, v: any) => setC({ ...c, flags: { ...c.flags, [k]: v } });
   const setStep = (i: number, s: Step) => setC({ ...c, steps: c.steps.map((x, j) => (j === i ? s : x)) });
   const move = (i: number, d: number) => {
@@ -195,7 +288,14 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
     setC({ ...c, steps: s });
   };
   const current = (): Cmd | null => {
-    if (!jsonMode) return c;
+    if (!jsonMode) {
+      const invalid = editor.current?.querySelector<HTMLTextAreaElement>("textarea:invalid");
+      if (invalid) {
+        invalid.reportValidity();
+        return null;
+      }
+      return c;
+    }
     try {
       return JSON.parse(json);
     } catch {
@@ -225,13 +325,22 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
       setBusy(false);
     }
   };
-  const runTest = async () => {
+  const runTest = async (through?: number) => {
     const cmd = current();
     if (!cmd) return;
     setBusy(true);
-    setTest(null);
+    setTrial(null);
+    setFullTrial(through === undefined);
+    const steps = through === undefined ? cmd.steps : cmd.steps.slice(0, through + 1);
+    const needsStop = through !== undefined && !steps.some(s => s.type === "reply" || s.type === "stop");
     try {
-      setTest(await api<TestResult>("POST", "/api/custom/test", { command: { ...cmd, name: cmd.name || "uji" }, text: testText }));
+      const result = await api<TestResult>("POST", "/api/custom/test", {
+        command: { ...cmd, name: cmd.name || "uji", steps: needsStop ? [...steps, { type: "stop" }] : steps }, text: testText,
+      });
+      setTrial({ steps, text: testText, json: jsonMode ? json : undefined, result });
+      if (through !== undefined && !result.trace.some(t => t.step === through + 1 && t.type === "http")) {
+        toast(result.error || "Perintah berhenti sebelum permintaan ini.", true);
+      }
     } catch (err) {
       toast((err as Error).message, true);
     } finally {
@@ -240,7 +349,7 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
   };
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:gap-6 xl:grid-cols-3">
+    <div ref={editor} className="grid grid-cols-1 gap-4 md:gap-6 xl:grid-cols-3">
       <div className="space-y-4 md:space-y-6 xl:col-span-2">
         <Section title={original ? `Ubah .${original}` : "Perintah baru"} action={<Button size="sm" variant="outline" onClick={toggleJson}><CodeIcon />{jsonMode ? "Mode form" : "Mode JSON"}</Button>}>
           {jsonMode ? (
@@ -261,6 +370,7 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
                 <label className="flex items-center gap-2">Limit <Input type="number" min={0} max={100} className="h-8 w-20" value={c.flags.limit || 0} onChange={(e) => flag("limit", Number(e.target.value))} /></label>
                 <label className="flex items-center gap-2">Jeda (dtk) <Input type="number" min={0} max={300} className="h-8 w-20" value={c.cooldown || 0} onChange={(e) => setC({ ...c, cooldown: Number(e.target.value) })} /></label>
                 <label className="flex items-center gap-2"><input type="checkbox" className="size-4 accent-brand-500" checked={override} onChange={(e) => setOverride(e.target.checked)} />Timpa perintah bawaan bernama sama</label>
+                {c.name === "gambar" && <p className="w-full text-xs text-gray-500">Jika paket classic aktif, centang pilihan ini untuk memakai API sendiri lewat .gambar. Pencarian classic tetap tersedia lewat .gimg.</p>}
               </div>
               <div className="space-y-3">
                 {c.steps.map((s, i) => (
@@ -268,7 +378,7 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Badge size="sm" color="light">Langkah {i + 1}</Badge>
-                        <NativeSelect className="h-8 w-56" value={s.type} onChange={(e) => setStep(i, { ...NEW_STEP[e.target.value] })}>
+                        <NativeSelect aria-label={`Jenis langkah ${i + 1}`} className="h-9 w-56 py-1" value={s.type} onChange={(e) => setStep(i, { ...NEW_STEP[e.target.value] })}>
                           {Object.entries(STEP_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                         </NativeSelect>
                       </div>
@@ -278,7 +388,10 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
                         <Button size="icon-xs" variant="outline" onClick={() => setC({ ...c, steps: c.steps.filter((_, j) => j !== i) })} aria-label="Hapus langkah"><TrashBinIcon className="size-4" /></Button>
                       </div>
                     </div>
-                    <StepEditor step={s} secrets={secrets} onChange={(v) => setStep(i, v)} />
+                    <StepEditor step={s} secrets={secrets} onChange={(v) => setStep(i, v)} probe={traceAt(i)} probing={busy} onProbe={() => runTest(i)}
+                      lists={s.type === "random" ? c.steps.slice(0, i).flatMap((prev, j, before) =>
+                        prev.type === "http" && !before.slice(j + 1).some(later => later.save === prev.save)
+                          ? arrayOptions(traceAt(j), prev.save || "res") : []) : []} />
                   </div>
                 ))}
                 <div className="flex flex-wrap gap-2">
@@ -298,7 +411,7 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
       <div className="space-y-4 md:space-y-6">
         <Section title="Coba dulu" description="Dijalankan sungguhan (API dipanggil) tapi tidak dikirim ke WhatsApp.">
           <FormField label="Teks setelah perintah" help="jadi {{text}}, {{arg1}}, {{args}}"><Input value={testText} onChange={(e) => setTestText(e.target.value)} placeholder="kata kunci" /></FormField>
-          <Button className="mt-3" variant="outline" onClick={runTest} disabled={busy}>{busy ? "Menjalankan..." : "▶ Coba"}</Button>
+          <Button className="mt-3" variant="outline" onClick={() => runTest()} disabled={busy}>{busy ? "Menjalankan..." : "▶ Coba"}</Button>
           {test && (
             <div className="mt-4 space-y-3 text-sm">
               <Badge color={test.ok ? "success" : "error"}>{test.ok ? "Berhasil" : "Gagal"}</Badge>
@@ -308,8 +421,8 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
               </ol>
               {test.replies.map((r, i) => (
                 <div key={i} className="rounded-lg bg-gray-50 p-3 dark:bg-white/[0.03]">
-                  <p className="mb-1 text-xs text-gray-500">Balasan {i + 1}: {r.kind}{r.bytes ? ` • ${(r.bytes / 1024).toFixed(0)} KB` : ""}</p>
-                  {r.kind === "image" && r.url && <img src={r.url} alt="" className="mb-2 max-h-48 rounded" />}
+                  <p className="mb-1 text-xs text-gray-500">Balasan {i + 1}: {r.kind}{r.bytes ? ` • ${r.bytes < 1024 ? r.bytes + " B" : (r.bytes / 1024).toFixed(0) + " KB"}` : ""}</p>
+                  {r.kind === "image" && r.previewImage && <img src={r.previewImage} alt="Pratinjau gambar balasan" className="mb-2 max-h-48 rounded" />}
                   {r.text && <p className="whitespace-pre-wrap text-gray-800 dark:text-white/90">{r.text}</p>}
                 </div>
               ))}
@@ -320,7 +433,8 @@ function Editor({ initial, original, secrets, onSaved, onCancel }: { initial: Cm
           <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400">
             <p><code>{"{{text}}"}</code> teks setelah perintah • <code>{"{{arg1}}"}</code> kata pertama • <code>{"{{args}}"}</code></p>
             <p><code>{"{{sender.name}}"}</code> <code>{"{{sender.number}}"}</code> <code>{"{{chat.name}}"}</code> <code>{"{{quoted.text}}"}</code> <code>{"{{date}}"}</code> <code>{"{{time}}"}</code></p>
-            <p>Hasil langkah: <code>{"{{res.data.title}}"}</code> • modifier: <code>random first last length reverse shuffle keys values</code> • indeks <code>[0]</code> / <code>-1</code></p>
+            <p>Dalam ekspresi lama <code>result.images.random</code>, jika <code>images</code> adalah daftar, <code>random</code> mengambil satu item acak. Pada objek yang memiliki kolom <code>random</code>, ekspresi ini membaca kolom tersebut.</p>
+            <p>Untuk perintah baru, gunakan langkah <strong>Pilih acak dari daftar</strong> dan isi path daftar. Nama <code>random</code> di dalam path langkah itu selalu merujuk ke kolom JSON.</p>
             <p>Filter: <code>{"{{res.title | upper | default:-}}"}</code> — upper, lower, trim, default:x, truncate:n, join:sep, urlencode, json, number</p>
             <p>Rahasia hanya di langkah HTTP: <code>{"{{secret.NAMA}}"}</code> (di teks balasan tampil ***).</p>
           </div>
@@ -388,7 +502,7 @@ export default function CustomCommandsPage() {
     <>
       <PageTitle
         title="Perintah Kustom"
-        description="Buat perintah sendiri tanpa ngoding: panggil API, ambil data dengan path (mis. result.images.random), lalu balas teks/gambar/video."
+        description="Rangkai permintaan API, pilih data dari respons, lalu kirim balasan ke chat."
         actions={<Button onClick={() => setEditing({ cmd: structuredClone(EMPTY), original: null })}><PlusIcon />Perintah baru</Button>}
       />
       <div className="grid grid-cols-1 gap-4 md:gap-6 xl:grid-cols-3">
@@ -420,8 +534,8 @@ export default function CustomCommandsPage() {
           <Section title="Rahasia (API key)" description="Disimpan terenkripsi. Pakai di header/query/URL: {{secret.NAMA}}. Nilai tidak pernah ditampilkan lagi.">
             <Chips items={secrets} onRemove={async (n) => { await api("DELETE", `/api/secrets/${n}`); reload(); }} empty="Belum ada rahasia." />
             <div className="mt-4 grid grid-cols-1 gap-2">
-              <Input className="font-mono" value={secretName} onChange={(e) => setSecretName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))} placeholder="NAMA_RAHASIA" />
-              <Input type="password" autoComplete="off" value={secretValue} onChange={(e) => setSecretValue(e.target.value)} placeholder="nilai / API key" />
+              <Input aria-label="Nama rahasia" className="font-mono" value={secretName} onChange={(e) => setSecretName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))} placeholder="NAMA_RAHASIA" />
+              <Input aria-label="Nilai API key" type="password" autoComplete="off" value={secretValue} onChange={(e) => setSecretValue(e.target.value)} placeholder="nilai / API key" />
               <Button variant="outline" onClick={saveSecret} disabled={!secretName || !secretValue}>Simpan rahasia</Button>
             </div>
           </Section>

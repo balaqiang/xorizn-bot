@@ -4,6 +4,10 @@ node_modules/
 
 # data runtime: sesi login WhatsApp, database JSON/SQLite, cache, cadangan
 data/
+# Modul referensi statis yang dipakai plugin classic (rumus, unsur, negara, dll.)
+!src/lib/data/
+src/lib/data/*
+!src/lib/data/*.js
 *.log
 
 # konfigurasi lokal (berisi password dashboard & API key) — salin dari config/config.example.json

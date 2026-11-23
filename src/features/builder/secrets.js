@@ -56,10 +56,14 @@ export function getSecret(name) {
 }
 
 /** Objek {NAMA: nilai} yang hanya mendekripsi saat dibaca. */
-export function secretScope() {
+export function secretScope(onRead) {
   const out = {}
   for (const name of Object.keys(bot.db.collection('secrets'))) {
-    Object.defineProperty(out, name, { enumerable: true, get: () => getSecret(name) })
+    Object.defineProperty(out, name, { enumerable: true, get() {
+      const value = getSecret(name)
+      if (value) onRead?.(value)
+      return value
+    } })
   }
   return out
 }
