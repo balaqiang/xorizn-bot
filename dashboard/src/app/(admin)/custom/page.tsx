@@ -36,7 +36,7 @@ const NEW_STEP: Record<string, Step> = {
   set: { type: "set", save: "teks", value: "" },
   random: { type: "random", items: ["pilihan 1", "pilihan 2"], save: "acak" },
   check: { type: "check", path: "res.", op: "exists", value: "", failText: "Tidak ada hasil." },
-  reply: { type: "reply", kind: "text", text: "Halo {{sender.name}}!", url: "", fileName: "" },
+  reply: { type: "reply", kind: "any", text: "", url: "{{res}}", fileName: "" },
   react: { type: "react", emoji: "✅" },
   ai: { type: "ai", prompt: "Jawab singkat: {{text}}", save: "ai" },
   delay: { type: "delay", seconds: 1 },
@@ -51,7 +51,7 @@ const PRESETS: { label: string; cmd: Cmd }[] = [
       steps: [
         { ...NEW_STEP.http, url: "", responseType: "json" },
         { type: "random", path: "res.result.images", itemPath: "", save: "img" },
-        { type: "reply", kind: "image", url: "{{img}}", text: "" },
+        { type: "reply", kind: "any", url: "{{img}}", text: "" },
       ],
     },
   },
@@ -232,14 +232,15 @@ function StepEditor({ step, onChange, secrets, probe, onProbe, probing, lists }:
       return (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <FormField label="Jenis">
-            <NativeSelect value={step.kind} onChange={set("kind")}>
+            <NativeSelect aria-label="Jenis balasan" value={step.kind} onChange={set("kind")}>
+              <option value="any">Any (deteksi otomatis)</option>
               <option value="text">Teks</option><option value="image">Gambar</option><option value="video">Video</option><option value="audio">Audio</option>
               <option value="voice">Voice note</option><option value="sticker">Stiker</option><option value="document">Dokumen</option>
             </NativeSelect>
           </FormField>
-          {step.kind !== "text" && <FormField label="URL media" className="sm:col-span-3"><Input className="font-mono text-xs" value={step.url} onChange={set("url")} placeholder="{{img}}" /></FormField>}
+          {step.kind !== "text" && <FormField label={step.kind === "any" ? "Sumber file" : "URL media"} className="sm:col-span-3" help={step.kind === "any" ? "Isi URL, variabel URL seperti {{img}}, atau {{res}} jika API mengembalikan file langsung. Bot mendeteksi jenis file saat mengirim." : undefined}><Input className="font-mono text-xs" value={step.url} onChange={set("url")} placeholder="{{img}}" /></FormField>}
           <FormField label={step.kind === "text" ? "Teks" : "Caption (opsional)"} className="sm:col-span-4"><Textarea rows={step.kind === "text" ? 3 : 2} value={step.text} onChange={set("text")} /></FormField>
-          {step.kind === "document" && <FormField label="Nama file"><Input value={step.fileName} onChange={set("fileName")} /></FormField>}
+          {(step.kind === "document" || step.kind === "any") && <FormField label="Nama file dokumen (opsional)"><Input value={step.fileName ?? ""} onChange={set("fileName")} /></FormField>}
         </div>
       );
     case "react":

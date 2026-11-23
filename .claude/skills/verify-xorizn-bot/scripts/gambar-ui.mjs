@@ -47,6 +47,10 @@ try {
         assert.ok(!output.includes(key), 'Nilai rahasia muncul pada hasil uji.')
       }
     }
+    await clickButton('Perintah baru')
+    await page.waitForSelector('select[aria-label="Jenis balasan"]')
+    assert.equal(await page.$eval('select[aria-label="Jenis balasan"]', el => el.value), 'any')
+    await clickButton('Batal')
     await input('Nama rahasia').fill('GAMBAR_KEY')
     await input('Nilai API key').fill(fixture.apiKey)
     await clickButton('Simpan rahasia')
@@ -91,6 +95,7 @@ try {
       safe(JSON.stringify(rows))
       assert.equal(rows[0].steps[1].path, listPath)
       assert.equal(rows[0].steps[1].itemPath, field)
+      assert.equal(rows[0].steps[2].kind, 'any')
       if (createdAt) assert.equal(rows[0].createdAt, createdAt)
       createdAt = rows[0].createdAt
       const chat = (await http('POST', inst.controlUrl + '/chat', { body: { from: FIXTURE.user, text: '.gambar' } })).json

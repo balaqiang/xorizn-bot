@@ -4,6 +4,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createServer } from 'node:http'
+import { once } from 'node:events'
 import sharp from 'sharp'
 import bot from '../src/core/bot.js'
 import logger from '../src/core/logger.js'
@@ -169,4 +171,47 @@ test('rahasia disamarkan sebelum pemotongan trace, balasan, log dan error yang t
   assert.ok(logger.recent().some(log => log.message.endsWith(error)))
   assertMasked(logger.recent())
   assertMasked(preview)
+})
+
+test('Any mendeteksi isi URL atau respons biner yang berubah pada perintah yang sama', async () => {
+  const cases = [
+    { bytes: fixture.images[0], header: 'video/mp4', kind: 'image', mime: 'image/png' },
+    { bytes: await fs.readFile(new URL('./fixtures/frame.mp4', import.meta.url)), kind: 'video', mime: 'video/mp4' },
+    { bytes: Buffer.from([0, 1, 2, 3]), header: 'application/octet-stream', kind: 'document', mime: 'application/octet-stream' }
+  ]
+  let current = cases[0]
+  let calls = 0
+  const server = createServer((_req, res) => {
+    calls++
+    if (current.header) res.setHeader('content-type', current.header)
+    res.end(current.bytes)
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  try {
+    const host = '127.0.0.1:' + server.address().port
+    bot.settings.builder.allowHosts.push(host)
+    const url = 'http://' + host + '/media'
+    for (const direct of [true, false]) {
+      const reply = { type: 'reply', kind: 'any', url: direct ? url : '{{res}}', text: 'Media pilihan' }
+      const cmd = { name: 'gambar', steps: direct ? [reply] : [{ type: 'http', url, save: 'res' }, reply] }
+      builder.save(cmd, { previousName: 'gambar' })
+      for (current of cases) {
+        const preview = await builder.test(cmd)
+        assert.equal(preview.ok, true, preview.error)
+        assert.equal(preview.replies[0].kind, current.kind)
+        assert.equal(preview.replies[0].contentType, current.mime)
+        const actual = await sendGambar()
+        assert.deepEqual(actual[current.kind], current.bytes)
+        assert.equal(actual.mimetype, current.mime)
+        assert.equal(actual.caption, 'Media pilihan')
+      }
+    }
+    assert.equal(calls, 12)
+  } finally {
+    const closed = once(server, 'close')
+    server.close()
+    server.closeAllConnections()
+    await closed
+  }
 })

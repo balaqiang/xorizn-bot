@@ -7,13 +7,14 @@
  *   set    { save, value }                             simpan teks / nilai
  *   random { items: [...], save } | { path, itemPath?, save }   pilih satu dari daftar
  *   check  { path, op, value, failText }               hentikan dengan pesan bila syarat tidak terpenuhi
- *   reply  { kind: text|image|video|audio|voice|sticker|document, text, url, fileName }
+ *   reply  { kind: text|any|image|video|audio|voice|sticker|document, text, url, fileName }
  *   react  { emoji }
  *   ai     { prompt, save }                            tanya AI (pengaturan AI di dashboard)
  *   delay  { seconds }
  *   stop   { text }                                    balas (opsional) lalu selesai
  */
 import sharp from 'sharp'
+import { fileTypeFromBuffer } from 'file-type'
 import { render, renderDeep, evalExpr, getPath, splitPath, checkTemplate, toText, TemplateError } from './path.js'
 import { safeRequest, parseBody, NetError } from './net.js'
 import { secretScope } from './secrets.js'
@@ -23,7 +24,7 @@ import { toVoiceNote } from '../media.js'
 
 export const LIMITS = { steps: 25, http: 5, replies: 5, runtimeMs: 90000, mediaBytes: 25 * 1048576, textLen: 4000 }
 export const STEP_TYPES = ['http', 'pick', 'set', 'random', 'check', 'reply', 'react', 'ai', 'delay', 'stop']
-export const REPLY_KINDS = ['text', 'image', 'video', 'audio', 'voice', 'sticker', 'document']
+export const REPLY_KINDS = ['text', 'any', 'image', 'video', 'audio', 'voice', 'sticker', 'document']
 export const CHECK_OPS = ['exists', 'empty', 'equals', 'notEquals', 'contains', 'gt', 'lt', 'matches']
 const RESERVED = new Set(['text', 'args', 'command', 'prefix', 'sender', 'chat', 'quoted', 'bot', 'date', 'time', 'secret', 'vars', ...Array.from({ length: 9 }, (_, i) => `arg${i + 1}`)])
 export const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,29}$/
@@ -229,11 +230,24 @@ function checkOp(v, op, want) {
   return false
 }
 
-async function fetchMedia(url, i) {
-  const res = await safeRequest(url, { maxBytes: LIMITS.mediaBytes, timeoutMs: 30000 })
+async function readMedia(source, i) {
+  if (Buffer.isBuffer(source)) {
+    if (!source.length) throw new StepError(`Langkah ${i + 1}: media kosong.`, i)
+    return { buffer: source, contentType: '' }
+  }
+  if (typeof source !== 'string' || !/^https?:\/\//i.test(source)) throw new StepError(`Langkah ${i + 1}: URL media tidak valid.`, i)
+  const res = await safeRequest(source, { maxBytes: LIMITS.mediaBytes, timeoutMs: 30000 })
   if (res.status >= 400) throw new StepError(`Langkah ${i + 1}: media tidak bisa diambil (HTTP ${res.status}).`, i)
   if (!res.buffer.length) throw new StepError(`Langkah ${i + 1}: media kosong.`, i)
   return res
+}
+
+// Format lain tetap dapat dikirim sebagai lampiran, termasuk berkas tanpa penanda format.
+function automaticKind(mime) {
+  if (['image/jpeg', 'image/png', 'image/webp'].includes(mime)) return 'image'
+  if (['video/mp4', 'video/3gpp'].includes(mime)) return 'video'
+  if (['audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/opus', 'audio/aac', 'audio/amr'].includes(mime)) return 'audio'
+  return 'document'
 }
 
 /**
@@ -340,27 +354,28 @@ export async function run(def, m, ctx, { dryRun = false } = {}) {
             info = caption.slice(0, 80)
             break
           }
-          const url = tpl(step.url)
-          if (!/^https?:\/\//i.test(url)) throw new StepError(`Langkah ${i + 1}: URL media tidak valid.`, i)
-          const media = await fetchMedia(url, i)
-          const ct = media.contentType.split(';')[0]
+          const source = tpl(step.url, { raw: step.kind === 'any' })
+          const media = await readMedia(source, i)
+          const detected = step.kind === 'any' ? await fileTypeFromBuffer(media.buffer).catch(() => undefined) : undefined
+          const kind = step.kind === 'any' ? automaticKind(detected?.mime) : step.kind
+          const ct = detected?.mime || media.contentType.split(';')[0] || 'application/octet-stream'
           let content
           let previewImage
-          if (step.kind === 'image' || step.kind === 'sticker') {
+          if (kind === 'image' || kind === 'sticker') {
             const meta = await sharp(media.buffer, { animated: true }).metadata().catch(() => null)
             const isVideo = /video|gif/.test(ct)
-            if (!meta && !(step.kind === 'sticker' && isVideo)) throw new StepError(`Langkah ${i + 1}: URL bukan gambar (${ct || 'tipe tidak diketahui'}).`, i)
-            content = step.kind === 'image' ? { image: media.buffer, caption } : dryRun ? { sticker: true } : { sticker: await toSticker(media.buffer, { mimetype: isVideo ? ct : 'image/png' }) }
-            if (dryRun && step.kind === 'image') {
+            if (!meta && !(kind === 'sticker' && isVideo)) throw new StepError(`Langkah ${i + 1}: URL bukan gambar (${ct || 'tipe tidak diketahui'}).`, i)
+            content = kind === 'image' ? { image: media.buffer, caption, ...(detected && { mimetype: ct }) } : dryRun ? { sticker: true } : { sticker: await toSticker(media.buffer, { mimetype: isVideo ? ct : 'image/png' }) }
+            if (dryRun && kind === 'image') {
               const thumbnail = await sharp(media.buffer).rotate().resize({ width: 192, height: 192, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 75 }).toBuffer()
               previewImage = 'data:image/jpeg;base64,' + thumbnail.toString('base64')
             }
-          } else if (step.kind === 'video') content = { video: media.buffer, caption, mimetype: /video/.test(ct) ? ct : 'video/mp4' }
-          else if (step.kind === 'audio') content = { audio: media.buffer, mimetype: /audio/.test(ct) ? ct : 'audio/mpeg' }
-          else if (step.kind === 'voice') content = dryRun ? { audio: true } : { audio: await toVoiceNote(media.buffer, ct), mimetype: 'audio/ogg; codecs=opus', ptt: true }
-          else content = { document: media.buffer, mimetype: ct || 'application/octet-stream', fileName: mask(tpl(step.fileName || '')) || 'file', caption }
-          await send(content, { kind: step.kind, url: mask(url), contentType: mask(ct), bytes: media.buffer.length, text: caption, ...(previewImage && { previewImage }) })
-          info = `${step.kind} ${ct} ${media.buffer.length} B`
+          } else if (kind === 'video') content = { video: media.buffer, caption, mimetype: /video/.test(ct) ? ct : 'video/mp4' }
+          else if (kind === 'audio') content = { audio: media.buffer, mimetype: /audio/.test(ct) ? ct : 'audio/mpeg' }
+          else if (kind === 'voice') content = dryRun ? { audio: true } : { audio: await toVoiceNote(media.buffer, ct), mimetype: 'audio/ogg; codecs=opus', ptt: true }
+          else content = { document: media.buffer, mimetype: ct, fileName: mask(tpl(step.fileName || '')) || (detected ? `file.${detected.ext}` : 'file'), caption }
+          await send(content, { kind, ...(typeof source === 'string' && { url: mask(source) }), contentType: mask(ct), bytes: media.buffer.length, text: caption, ...(previewImage && { previewImage }) })
+          info = `${kind} ${ct} ${media.buffer.length} B`
           break
         }
         case 'react': {

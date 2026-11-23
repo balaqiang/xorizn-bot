@@ -175,6 +175,7 @@ export function parseBody(res, type = 'auto') {
       if (type === 'json') throw new NetError('Respons API bukan JSON yang valid.')
     }
   }
+  if (!ct && type === 'auto' && res.buffer.subarray(0, 512).includes(0)) return res.buffer
   if (/^text\/|xml|javascript|html/.test(ct) || !ct) return asText()
   return res.buffer
 }
