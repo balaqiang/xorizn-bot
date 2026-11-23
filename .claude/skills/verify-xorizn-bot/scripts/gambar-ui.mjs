@@ -49,7 +49,11 @@ try {
     }
     await clickButton('Perintah baru')
     await page.waitForSelector('select[aria-label="Jenis balasan"]')
-    assert.equal(await page.$eval('select[aria-label="Jenis balasan"]', el => el.value), 'any')
+    const replyKind = 'select[aria-label="Jenis balasan"]'
+    assert.deepEqual(await page.$eval(replyKind, el => [el.value, el.options[0].value, el.options[1].value]), ['text', 'text', 'any'])
+    assert.ok(!(await page.$eval('body', el => el.innerText)).includes('Sumber file'))
+    await select('Jenis balasan', 'any')
+    await waitText('Sumber file')
     await clickButton('Batal')
     await input('Nama rahasia').fill('GAMBAR_KEY')
     await input('Nilai API key').fill(fixture.apiKey)

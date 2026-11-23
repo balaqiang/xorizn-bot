@@ -118,7 +118,7 @@ Bila MySQL / Postgres tidak bisa dihubungi saat bot start, bot tetap jalan memak
    | `{"result":{"images":["https://contoh.id/a.png"]}}` | `res.result.images` | Kosongkan |
    | `{"data":{"items":[{"url":"https://contoh.id/b.png"}]}}` | `res.data.items` | `url` |
 
-4. Di langkah **Balas**, pilih **Any (deteksi otomatis)** dan gunakan `{{img}}` sebagai sumber file. Jika penyedia bergantian mengirim gambar dan MP4, bot mengenali isi file pada setiap permintaan. Klik **▶ Coba** untuk melihat jenis balasan dan thumbnail gambar. Untuk API yang mengembalikan file langsung, gunakan langkah HTTP dengan jenis respons otomatis lalu isi sumber file dengan `{{res}}`.
+4. Di langkah **Balas**, pilih **Any (deteksi jenis file)** dan gunakan `{{img}}` sebagai sumber file. Jika penyedia bergantian mengirim gambar dan MP4, bot mengenali isi file pada setiap permintaan. Klik **▶ Coba** untuk melihat jenis balasan dan thumbnail gambar. Untuk API yang mengembalikan file langsung, gunakan langkah HTTP dengan jenis respons otomatis lalu isi sumber file dengan `{{res}}`.
 5. Saat paket *classic* aktif, `.gambar` sudah menjadi alias pencarian gambar. Centang **Timpa perintah bawaan bernama sama** jika ingin mengarahkan nama itu ke perintah ini. Klik **Simpan**, lalu kirim `.gambar` dari WhatsApp yang terhubung. Gunakan prefix yang telah Anda pilih jika berbeda. Pencarian classic tetap tersedia melalui `.gimg`.
 6. Untuk berpindah penyedia, klik **Ubah** di baris `.gambar`, ganti endpoint dan referensi key, lalu ulangi langkah 3–5. Nama perintah dan jumlah pemakaiannya dipertahankan.
 
@@ -136,7 +136,7 @@ Buka dashboard → **Perintah Kustom** → *Perintah baru* (atau pilih contoh). 
 | 🎯 Ambil data | Path seperti `res.result.images.random`, `res.data[0].url`, `res.list.length` |
 | ✅ Cek syarat | ada / kosong / sama / mengandung / lebih dari / regex — bila gagal, kirim pesan lalu berhenti |
 | 📝 Simpan, 🎲 Acak | Simpan teks/variabel, pilih acak dari daftar |
-| 💬 Balas | Any mendeteksi gambar, video, atau audio yang didukung dan mengirim format lain sebagai dokumen. Jenis juga bisa dipilih manual, termasuk teks, voice note, dan stiker. |
+| 💬 Balas | Langkah baru memakai Teks. Untuk mengirim file, pilih Any agar bot mendeteksi jenisnya. Jenis media juga bisa dipilih manual, termasuk voice note dan stiker. |
 | 🤖 Tanya AI, 😀 Reaksi, ⏱️ Jeda, ⏹️ Selesai | — |
 
 **Template:** `{{text}}` (teks setelah perintah), `{{arg1}}`, `{{sender.name}}`, `{{sender.number}}`, `{{chat.name}}`, `{{quoted.text}}`, `{{date}}`, `{{time}}`, hasil langkah (`{{res.title}}`).

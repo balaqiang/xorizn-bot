@@ -36,7 +36,7 @@ const NEW_STEP: Record<string, Step> = {
   set: { type: "set", save: "teks", value: "" },
   random: { type: "random", items: ["pilihan 1", "pilihan 2"], save: "acak" },
   check: { type: "check", path: "res.", op: "exists", value: "", failText: "Tidak ada hasil." },
-  reply: { type: "reply", kind: "any", text: "", url: "{{res}}", fileName: "" },
+  reply: { type: "reply", kind: "text", text: "", url: "{{res}}", fileName: "" },
   react: { type: "react", emoji: "✅" },
   ai: { type: "ai", prompt: "Jawab singkat: {{text}}", save: "ai" },
   delay: { type: "delay", seconds: 1 },
@@ -233,8 +233,9 @@ function StepEditor({ step, onChange, secrets, probe, onProbe, probing, lists }:
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <FormField label="Jenis">
             <NativeSelect aria-label="Jenis balasan" value={step.kind} onChange={set("kind")}>
-              <option value="any">Any (deteksi otomatis)</option>
-              <option value="text">Teks</option><option value="image">Gambar</option><option value="video">Video</option><option value="audio">Audio</option>
+              <option value="text">Teks</option>
+              <option value="any">Any (deteksi jenis file)</option>
+              <option value="image">Gambar</option><option value="video">Video</option><option value="audio">Audio</option>
               <option value="voice">Voice note</option><option value="sticker">Stiker</option><option value="document">Dokumen</option>
             </NativeSelect>
           </FormField>
